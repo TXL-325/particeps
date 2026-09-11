@@ -1,0 +1,16 @@
+[Unit]
+Description=particeps host agent
+After=network.target incus.service
+Wants=incus.service
+
+[Service]
+Type=simple
+ExecStart=/opt/particeps/particeps-agent --config /etc/particeps/config.yaml
+Restart=on-failure
+RestartSec=3
+User=root
+NoNewPrivileges=true
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,14 @@
+listen: 127.0.0.1:8792
+data_dir: /var/lib/particeps
+incus_socket: /var/lib/incus/unix.socket
+incus_project: particeps
+storage_pool: particeps-pool
+network: particepsbr0
+private_ipv4_cidr: 10.80.0.0/24
+task_concurrency: 2
+cpu_cap_cores: 0 # 首次启动按母机逻辑 CPU 数的 75% 设置；之后使用 Web 保存值。
+port_pool_start: 20000
+port_pool_end: 59999
+ports_per_guest: 20
+source_ip_limit: 0
+sample_seconds: 5
