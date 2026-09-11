@@ -1,0 +1,46 @@
+# >>> Comet managed project state >>>
+!/.comet/
+/.comet/*
+!/.comet/config.yaml
+# <<< Comet managed project state <<<
+
+/bin/
+/dist/
+/web/node_modules/
+/web/dist/
+*.exe
+*.test
+*.out
+.DS_Store
+coverage.out
+/particeps-agent
+/particeps-agent.exe
+
+# Machine-local development integration and execution state.
+/.agents/
+/.claude/
+/.codex/
+/AGENTS.md
+/CLAUDE.md
+
+# Local configuration, credentials, databases and backups.
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.p12
+*.pfx
+*.db
+*.db-*
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.sqlite3-*
+admin-bootstrap.txt
+credential.key
+id_rsa
+id_ed25519
+/data/
+/backups/
+/secrets/
