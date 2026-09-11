@@ -1,0 +1,66 @@
+openapi: 3.0.3
+info:
+  title: particeps Agent API
+  version: v1
+servers:
+  - url: /api/v1
+paths:
+  /session:
+    post:
+      summary: 管理员登录
+      requestBody:
+        content:
+          application/json:
+            example: { password: "..." }
+      responses:
+        "200": { description: 设置会话 cookie }
+  /host:
+    get:
+      summary: 母机概览与合计 CPU 硬上限
+      responses:
+        "200": { description: host snapshot }
+  /instances:
+    get:
+      summary: 列出小鸡
+    post:
+      summary: 批量创建（Idempotency-Key）
+  /instances/{id}:
+    get:
+      summary: 小鸡详情
+  /tasks/{id}:
+    get:
+      summary: 任务进度（不返回密码）
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: 逐项进度；credentialAvailable 表示存在尚未领取且未过期的初始凭据。
+        "401": { description: 未认证 }
+        "404": { description: 任务不存在 }
+  /tasks/{id}/credentials:
+    post:
+      summary: 领取一次性初始凭据
+      description: 仅管理会话或管理 Token 可调用。凭据加密暂存 15 分钟，成功领取时清除。返回 Cache-Control no-store；重复领取或过期返回空数组。丢失可通过密码重置恢复。
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: 本次领取的凭据
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [credentials]
+                properties:
+                  credentials:
+                    type: array
+                    items:
+                      type: object
+                      required: [name, instanceId, password]
+                      properties:
+                        name: { type: string }
+                        instanceId: { type: string }
+                        password: { type: string }
+        "401": { description: 未认证 }
+        "403": { description: 只读 Token 或来源校验失败 }
+        "409": { description: 任务或凭据状态冲突，需要核对或重置密码 }
