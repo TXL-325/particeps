@@ -1,0 +1,46 @@
+:root {
+  --ink: #1c1814;
+  --panel: #26211c;
+  --line: #3a322a;
+  --copper: #c47a3a;
+  --phosphor: #e4c078;
+  --paper: #efe6d2;
+  --mute: #9a8f7c;
+  --ok: #7d9b6a;
+  --fault: #c45c4a;
+  --rail: 3.2rem;
+}
+
+* { box-sizing: border-box; }
+html, body, #app { height: 100%; margin: 0; }
+body {
+  background: var(--ink);
+  color: var(--paper);
+  font-family: Figtree, system-ui, sans-serif;
+  font-size: 15px;
+}
+
+a { color: var(--copper); text-decoration: none; }
+button, input, select, textarea {
+  font: inherit;
+  color: inherit;
+  background: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  padding: 0.4rem 0.6rem;
+}
+button.primary {
+  background: var(--copper);
+  color: var(--ink);
+  border-color: var(--copper);
+  font-weight: 600;
+  cursor: pointer;
+}
+button { cursor: pointer; }
+table { width: 100%; border-collapse: collapse; }
+th, td { text-align: left; padding: 0.45rem 0.5rem; border-bottom: 1px solid var(--line); }
+th { color: var(--mute); font-weight: 500; font-size: 0.8rem; letter-spacing: 0.04em; }
+.num { font-family: "IBM Plex Mono", ui-monospace, monospace; color: var(--phosphor); }
+.mute { color: var(--mute); }
+.ok { color: var(--ok); }
+.fault { color: var(--fault); }
