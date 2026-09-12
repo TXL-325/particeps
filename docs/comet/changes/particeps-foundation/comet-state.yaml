@@ -3,9 +3,9 @@ name: particeps-foundation
 language: zh-CN
 phase: build
 status: active
-state_version: 25
+state_version: 28
 brief: brief.md
-shape_confirmation_hash: 638a8ea13c2676f510fc33034bdb85456bc85ca1be0fcd0224763cf3595d8309
+shape_confirmation_hash: b674fd624446a6eaf8dde0fe12a09ba31f395a78dc2b40c15325cde9678ceba8
 spec_changes:
   - capability: agent-architecture
     operation: create
@@ -23,7 +23,7 @@ workspace:
   finish: null
 loop:
   stage: building
-  goal_cycle: 10
+  goal_cycle: 11
   iteration: 1
   attempt: 0
   retry_epoch: 0
@@ -35,71 +35,88 @@ loop:
 acceptance:
   - id: A1
     source: brief.md
+    text: A13：在 Debian 13 amd64 上，通过 GitHub Release 的安装脚本完成首次安装、仅升级
+      Agent、查看状态、从最近一次升级备份回滚，以及卸载。打版本 tag 后 GitHub Actions 构建 linux amd64，并上传
+      Agent 二进制、install.sh 和 SHA256。脚本只从 Release 下载；SHA256 或 ELF64
+      校验失败时不替换现有程序，不改配置与后端资源。首次安装仅在缺失时创建 particeps 项目、particepsbr0（10.80.0.0/24
+      NAT、IPv6 关闭）和 16 GiB 的 particeps-pool；同名资源已存在则不修改，配置冲突则拒绝并保持原状；已有
+      `/etc/particeps/config.yaml` 不覆盖。升级前备份程序、systemd 单元、配置和管理库（SQLite 在线备份含
+      WAL，目录权限 0700），不含小鸡磁盘；替换程序后不改实例、网桥、存储池和配置值；原已停止的 Agent
+      保持停止；服务重启失败不得报告成功，并给出备份路径。`--status` 显示 Agent/Incus
+      服务、监听地址和最近备份。`--rollback`
+      从最近升级备份恢复程序、单元、配置和管理库。无参数且在终端时提供五项菜单：安装/升级、状态、回滚、全部卸载、只卸 Agent。卸载默认删除
+      Agent、配置、数据、particeps 项目内受管实例、particepsbr0、particeps-pool 和 particeps 项目，不
+      apt 卸载 Incus，不触碰其他项目或其他工具的实例；执行前必须输入 PURGE。`--keep-instances`
+      只停止并移除程序与服务，保留实例、网桥、池和管理数据。并发安装/升级被锁拒绝。
+    result: pending
+    reason: null
+  - id: A2
+    source: brief.md
     text: A1：Linux amd64 Agent 在已准备的 Debian 13 实验母机启动，以同一二进制提供嵌入式 Web 和 /api/v1；管理
       ID、Incus 实例与查询对象对应。创建、查询、启停和删除仅操作本项目受管资源，其他工具的实例与参考仓库保持原样。
     result: pending
     reason: null
-  - id: A2
+  - id: A3
     source: brief.md
     text: A2：对本次创建、查询、端口修改、启停和删除接口，未认证请求被拒绝；只读 Token 只能查询，管理 Token
       可按权限执行，撤销后立即失效。会话写入执行来源校验，不能绕过管理权限。
     result: pending
     reason: null
-  - id: A3
+  - id: A4
     source: brief.md
     text: A3：管理员密码、API Token
       和小鸡初始密码不进入普通查询或日志。自动生成的初始凭据加密暂存，只能由管理权限领取一次；领取后清除，过期后不可领取并清理暂存内容；错误、重试和迟到响应不重新暴露凭据。
     result: pending
     reason: null
-  - id: A4
+  - id: A5
     source: brief.md
     text: A4：默认系统为 Alpine，Web/API 同时提供 Alpine 和 Debian 13。一次正常请求可创建至少两台分别识别的 Incus
       系统容器，逐台结果可查询且与实际状态一致；另核对两种系统的实际运行系统、镜像来源和管理身份，不能用任务受理或 running 单独代替创建结果。
     result: pending
     reason: null
-  - id: A5
+  - id: A6
     source: brief.md
     text: A5：默认端口池为 20000–59999，每台初始分配 20 个连续号码，池与数量可配置；同一号码的 TCP/UDP 归同一实例。号段首个 TCP
       转到该实例 22，其余 TCP 和全部 UDP 默认同号，实际目标可核对且不额外占用 SSH 号码。
     result: pending
     reason: null
-  - id: A6
+  - id: A7
     source: brief.md
     text: A6：至少两台实例共享一个已核对属于母机的 IPv4 入口，外部客户端 TCP/UDP
       到达各自正确目标。自动分配跳过已占用号码，手工指定冲突被拒绝；并发请求不得重叠分配，宿主服务和非本系统 forward 对象不被接管、覆盖或清理。
     result: pending
     reason: null
-  - id: A7
+  - id: A8
     source: brief.md
     text: A7：已有实例可自动追加或指定可用号码，也可按协议编辑目标端口；实际转发、重新查询和界面展示一致。号码归属不变，修改一台不改变另一台规则或中断其已建立的连接。
     result: pending
     reason: null
-  - id: A8
+  - id: A9
     source: brief.md
     text: A8：对单台实例停止和启动时保留已分配号码、单端口和自定义目标；停止后暂停其 DNAT，另一台保持可达。启动后按观察到的内部 IPv4
       重绑；地址丢失或操作结果未确认时显示等待/待核对且不复用旧归属，恢复后原 UDP 客户端可继续通信。
     result: pending
     reason: null
-  - id: A9
+  - id: A10
     source: brief.md
     text: A9：删除时先摘除本实例映射并精确清理相关连接，确认实例删除后才回收号码。清理失败、写入中断或结果不明时保留占用和可查询原因，阻止危险重试/重分配；成功删除一台不影响另一台规则和连接，回收号码不得把旧入口连接导向新实例。
     result: pending
     reason: null
-  - id: A10
+  - id: A11
     source: brief.md
     text: A10：本次创建、端口查询/追加/编辑、启停和删除均可通过 Web 与 API
       完成，遵循一致的校验、权限和结果语义，并有对应接口说明。失败或待核对状态清楚；修改后未取得新查询时不沿用旧的已应用或 SSH
       标记，切换实例后的迟到结果不能覆盖当前对象。
     result: pending
     reason: null
-  - id: A11
+  - id: A12
     source: brief.md
     text: A11：实际停止并重新启动 Agent，核对已运行实例、IPv4
       转发与外部既有连接在管理进程停止期间继续工作，管理数据保留且恢复后可查询。记录连续性结果；暂停进程或仅观察服务重启后的 running
       状态不能代替该场景。
     result: pending
     reason: null
-  - id: A12
+  - id: A13
     source: brief.md
     text: A12：记录候选源码/二进制版本、实验母机配置、客户端和实例位置、检查前后结果及测试资源清理。交付保留完整首期基线及原 A1–A81
       的唯一主归属和依赖映射。相关开发检查和独立复核完成，并实际操作浏览器覆盖本次流程；未完成或不在本次范围的能力明确标识，不能把 HTTP
@@ -267,6 +284,15 @@ history:
       text: Native Shape artifacts changed
       truncated: false
     completed_at: 2026-09-12T08:06:43.602Z
+  - goal_cycle: 10
+    iteration: 1
+    attempt: 0
+    outcome: recovery
+    unresolved_ids: []
+    summary:
+      text: Native confirmed acceptance criteria changed
+      truncated: false
+    completed_at: 2026-09-12T14:03:26.127Z
 history_overflow:
   dropped_entries: 0
   first_dropped_at: null

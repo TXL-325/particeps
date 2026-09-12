@@ -73,6 +73,16 @@ chmod +x core.test
 ./core.test -test.v
 ```
 
+## 安装脚本测试
+
+[tests/installer/test_install.py](../../tests/installer/test_install.py)在临时目录中用 mock 的 `curl`/`systemctl`/`incus` 覆盖升级备份、校验失败、回滚和卸载路径。需要 bash、python3 和 sha256sum。在仓库根目录执行：
+
+```sh
+python3 tests/installer/test_install.py
+```
+
+该测试不连接 GitHub，也不改动真实 Incus。发布流程在打 `v*` tag 时由 [.github/workflows/release.yml](../../.github/workflows/release.yml) 先跑上述测试，再构建并上传 Release。
+
 ## Incus 集成测试
 
 [TestIncusReadOnlyIntegration](../../internal/incusx/exec_test.go)在已有测试实例内执行只读命令，需要以下环境变量：

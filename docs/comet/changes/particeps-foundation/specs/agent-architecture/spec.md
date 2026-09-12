@@ -1,12 +1,22 @@
 # 母机 Agent 基础交付实现方案
 
-状态：本次 foundation 的完整实现与验证目标已由用户于 2026-09-12 明确确认，授权进入 Build。阶段与验收结论以 Runtime 为准；其余首期架构要求保留在[完整首期架构](../../../../../planning/first-release/specs/agent-architecture/spec.md)。
+状态：用户已把 GitHub Release 部署脚本定为独立高优先验收 A13，待 Shape 确认。阶段与验收结论以 Runtime 为准；其余首期架构要求保留在[完整首期架构](../../../../../planning/first-release/specs/agent-architecture/spec.md)。
 
 ## 运行与配置
 
 Go Agent 构建为 Linux amd64 二进制，Vue 3/TypeScript/Vite 的静态前端嵌入其中，由单个 systemd 服务提供面板与 /api/v1；母机不需要 Node 服务。通过本地 Incus Unix socket 管理系统容器。实验后端基线为 Debian 13 Incus 6.0 系列，记录实际版本和所用能力。对应本次 A1。
 
-程序、配置和管理/监控数据库仍使用 /opt/particeps、/etc/particeps、/var/lib/particeps 的既有布局。只写本项目路径，保持数据目录单写者；不复用或格式化归属不明资源。本次在已准备的实验环境安装候选，通用首次安装、升级/回滚和剩余空间预算留给首期集成。
+程序、配置和管理/监控数据库仍使用 /opt/particeps、/etc/particeps、/var/lib/particeps 的既有布局。只写本项目路径，保持数据目录单写者；不复用或格式化归属不明资源。
+
+## 部署与发布
+
+`deploy/install.sh` 是唯一安装入口，由 GitHub Release 分发，不接受本地二进制旁路。tag 触发的 GitHub Actions 交叉编译 linux amd64、计算 SHA256，并上传 Agent、`install.sh` 与校验和文件。下载先落到临时文件，校验 SHA256 和 ELF64 后再替换 `/opt/particeps/particeps-agent`。对应本次 A13。
+
+已安装检测依据标准路径上的程序、`/etc/particeps/config.yaml` 和 systemd `ExecStart`；不完整安装拒绝升级。升级使用 `/run/lock/particeps-install.lock`。备份目录为 `/var/lib/particeps/backups/upgrade-*`，用 SQLite 在线备份复制管理库，避免只拷活文件丢掉 WAL。服务重启失败时退出非零并打印备份路径。
+
+卸载默认按 Incus 项目名 `particeps` 删除可核对归属的实例，再删除本系统创建的网桥、存储池和项目；删除前要求输入 `PURGE`。`--keep-instances` 不调用实例删除。不得 `apt remove incus` 或扫描其他项目。
+
+剩余空间预算和 8–16 台集成仍留给首期 S7。
 
 现有 App.Close 方法会停止并等待采样循环；实际进程退出路径的接入与验证仍待完成。本次须验证 Agent 停止/重启不影响已运行小鸡、有效转发及既有连接，重启后管理记录可查询。HTTP/任务的完整优雅退出与持久恢复仍按后续范围处理，不能把 Close 方法存在当作实际退出或全部恢复已完成。对应本次 A11。
 
@@ -47,7 +57,8 @@ Vue 使用 Composition API 与 script setup，路由组合页面，composable �
 | Web/API | 实际浏览器完成当前操作；API 与新查询结果一致 | 历史只有页面送达、认证 API 与 Vue 行为测试，不冒充真实浏览器验收 |
 | Agent 生命周期 | 实际停止/重启期间实例、现存转发和既有连接连续 | 暂停 Agent 的 UDP 记录与安装后 running 只提供部分证据 |
 | 环境/清理 | 候选版本、硬件、客户端/母机/小鸡路径、前后状态、资源清理 | 使用本地私网/ULA；不扩大为公网、SSH、资源压力或 8–16 台已通过 |
+| 部署脚本 | Release 资产、安装/升级/回滚、status、默认全卸与 keep-instances；失败不改现网 | 现有 `deploy/install.sh` 仅本地首装，无备份/升级/卸载/发布流水线 |
 
-范围整理和确认记录同步没有运行上述业务验证。Builder 针对已确认的本次 A1–A12 准备候选和精简交接，Runtime 执行必要检查，新的只读 Verifier 逐项验收。当前阶段不得因已有代码或历史测试把 pending 标为 passed。
+范围整理和确认记录同步没有运行上述业务验证。Builder 针对已确认的本次 A1–A13 准备候选和精简交接，A13 优先。Runtime 执行必要检查，新的只读 Verifier 逐项验收。当前阶段不得因已有代码或历史测试把 pending 标为 passed。
 
 本次基础交付通过后仍保留完整首期基线与原 ID 映射。最后首期集成验证所有原 81 项及跨阶段交互，局部通过不能豁免后续改动的回归。
