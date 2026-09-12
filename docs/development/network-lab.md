@@ -75,6 +75,8 @@ flowchart LR
 
 当前应用仍只有一个配置网络，`internal/incusx/client.go` 的 `EnsureNetwork` 在成功读取既有网桥后直接返回；创建新网桥时则配置 IPv4，并把 IPv6 设为 `none`。本次手工建立的双网段环境不等于它已具备多网桥管理能力。
 
-`internal/core/instances.go` 的 IPv6 地址分配、NIC 写入和路由配置仍有缺口。本次没有通过 Agent API 保存小鸡的新增 IPv6，也不是由面板自动发放的；不能用面板字段或现有 `v6`/`dual` 选项宣称创建功能已通过。NAT66、指定 IPv4 SNAT 出口、共享 IPv4 DNAT 聚合、真实公网连通与租户隔离仍需各自实现和验收。
+`internal/core/instances.go` 的 IPv6 地址分配、NIC 写入和路由配置仍有缺口。本次没有通过 Agent API 保存小鸡的新增 IPv6，也不是由面板自动发放的；不能用面板字段或现有 `v6`/`dual` 选项宣称创建功能已通过。共享 IPv4 DNAT 聚合已有 F03 的受限本地实现与实测；NAT66、指定 IPv4 SNAT 出口、真实公网连通与租户隔离仍需各自实现和验收。
+
+2026-09-12 源码/记录核对：原小鸡及共享桥已有 IPv6/SLAAC，而创建 `v4` 模式未见显式禁止 IPv6 的配置，因此这里的旧实例不能继续作为原 A77“只有 IPv4 连通性”的通过证据。严格 IPv4-only 与完整地址池约束在对应网络交付复验，见[进度同步](../quality/native-progress-sync-2026-09-12.md)；本次没有重新连接母机验证当前配置。
 
 F03 已利用本环境完成两个入口 IPv4 的转发实测，测试实例与对象随后清理。后续按 [功能批次](../quality/functional-audit.md) 推进资源限制以及 F04 的 IPv6 配置与分配；本记录没有改变全部 81 项正式验收结论。
