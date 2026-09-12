@@ -1,0 +1,14 @@
+[Unit]
+Description=Particeps VMnet2 lab IPv4 forwarding
+After=network-online.target docker.service incus.service
+Wants=network-online.target
+PartOf=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/particeps-vmnet2-forwarding add
+ExecStop=/usr/local/sbin/particeps-vmnet2-forwarding remove
+
+[Install]
+WantedBy=multi-user.target

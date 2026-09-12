@@ -1,0 +1,11 @@
+{
+  "installed_sha256": "2b139e759eaa0c068d7c62eb76c6aa5a6d040ecc6e8b9a899a48a4aa6c1a1bac",
+  "authenticated_api": "passed",
+  "existing_guest": "p-911f4462a5e2",
+  "existing_guest_status": "running",
+  "new_default_ingress": "10.90.0.11",
+  "pending_queues": {
+    "forward_writes": 0,
+    "conntrack_cleanup": 0
+  }
+}

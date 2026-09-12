@@ -2,7 +2,7 @@
 
 母机 Agent：用 Incus 系统容器管理小鸡，内置 Web 面板与 `/api/v1`。
 
-当前为 foundation 的 Build 修复阶段。创建、配额、认证与采样已有实现；共享地址的端口转发、IPv6/NAT66、任务恢复、重装与 Web 终端等仍有明显缺口。完整现状、关键代码流程、技术解释和架构图见 [阶段技术审阅](docs/quality/stage-review-2026-09-11.md)，分批验收见 [功能检查记录](docs/quality/functional-audit.md)。
+当前为 foundation 的 Build 修复阶段。创建、配额、认证与采样已有实现；共享 IPv4 端口转发、追加/编辑和清理已完成本地实测，见 [F03 端口批次记录](docs/quality/f03-port-forwarding-2026-09-11.md)。IPv6/NAT66、完整任务恢复、重装与 Web 终端仍有明显缺口。架构与代码基线见 [阶段技术审阅](docs/quality/stage-review-2026-09-11.md)，分批验收见 [功能检查记录](docs/quality/functional-audit.md)。
 
 VMnet2 的三个本地 IPv4 地址及两段小鸡 IPv6 测试网络已配置，地址、路由、实际验证和备份位置见 [本地网络实验环境](docs/development/network-lab.md)。这属于开发环境准备，面板自动分配 IPv6 等能力仍待实现。
 
@@ -22,7 +22,7 @@ $env:GOOS="linux"
 $env:GOARCH="amd64"
 $env:CGO_ENABLED="0"
 go vet ./...
-go build -o dist/particeps-agent ./cmd/particeps-agent
+go build -trimpath -ldflags="-s -w" -o dist/particeps-agent ./cmd/particeps-agent
 ```
 
 Go 行为测试在 Linux 执行 `go test ./...`。Windows 上如果安全软件拦截 Go 测试可执行文件，可以先交叉编译测试，再把生成的 `.test` 文件复制到测试母机逐包运行：
@@ -48,7 +48,7 @@ sudo cat /var/lib/particeps/admin-bootstrap.txt
 
 默认监听 `127.0.0.1:8792`，可经 SSH 隧道或 HTTPS 反向代理访问。需要直连实验网卡时显式修改监听地址。已有安装的配置不会因为修改示例而自动改变。
 
-安装脚本面向 Debian 13 amd64 实验环境，会创建 Incus 项目、IPv4 网桥和 16 GiB LVM thin 存储池。同名资源的归属检查、升级备份/回滚与网络冲突检查尚未完成；运行脚本前应阅读阶段审阅中的部署限制。候选二进制尚未部署；后续实验网络配置已单独记录。
+安装脚本面向 Debian 13 amd64 实验环境，会创建 Incus 项目、IPv4 网桥和 16 GiB LVM thin 存储池，并安装 conntrack 用于连接清理。同名资源的归属检查、通用升级/回滚与网段冲突检查尚未完成；运行脚本前应阅读阶段审阅中的部署限制。本次 F03 版本已在实验母机备份后更新，具体版本、检查和备份位置见批次记录。
 
 自动生成的小鸡初始密码通过任务页的“领取初始凭据”按钮领取一次，有效期为创建完成后 15 分钟；普通任务查询不包含密码。领取后或过期后可通过实例密码重置设置新密码。
 

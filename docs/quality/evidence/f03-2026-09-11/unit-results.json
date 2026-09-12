@@ -1,0 +1,50 @@
+[
+  {
+    "package": "core",
+    "exit": 0,
+    "passed": 48,
+    "skipped": 0
+  },
+  {
+    "package": "incusx",
+    "exit": 0,
+    "passed": 13,
+    "skipped": 1
+  },
+  {
+    "package": "store",
+    "exit": 0,
+    "passed": 2,
+    "skipped": 0
+  },
+  {
+    "package": "api",
+    "exit": 0,
+    "passed": 4,
+    "skipped": 0
+  },
+  {
+    "package": "cgroupcap",
+    "exit": 0,
+    "passed": 1,
+    "skipped": 0
+  },
+  {
+    "package": "cpu",
+    "exit": 0,
+    "passed": 6,
+    "skipped": 0
+  },
+  {
+    "package": "hostmetrics",
+    "exit": 0,
+    "passed": 3,
+    "skipped": 0
+  },
+  {
+    "package": "sample",
+    "exit": 0,
+    "passed": 2,
+    "skipped": 0
+  }
+]

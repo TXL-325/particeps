@@ -1,0 +1,7 @@
+{
+  "incus_version": "6.0.4",
+  "get_etag_present": true,
+  "stale_if_match_put_http": 200,
+  "description_after_put": "F03 stale ETag accepted",
+  "readback_http": 200
+}

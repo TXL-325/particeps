@@ -1,0 +1,16 @@
+{
+  "task": "d80192d856bd8b06450e0bb570ed9802",
+  "status": "ok",
+  "items": [
+    {
+      "name": "f03-final-1",
+      "status": "ok",
+      "step": "done"
+    },
+    {
+      "name": "f03-final-2",
+      "status": "ok",
+      "step": "done"
+    }
+  ]
+}

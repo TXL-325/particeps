@@ -2,6 +2,8 @@
 
 记录日期：2026-09-11。VMware 中的 Debian 母机已经具备三个本地 IPv4 地址和两个供小鸡使用的 IPv6 网段。本次通过操作系统与 Incus 配置建立测试条件，没有修改 Agent 实现或部署新二进制，也没有改变正式验收计数。
 
+随后 F03 已完成端口功能开发、实测和实验服务更新，见 [F03 批次记录](../quality/f03-port-forwarding-2026-09-11.md)。同批安装 conntrack，并启用 `particeps-vmnet2-forwarding.service`：只放行 ens37 上目标为 `.11/.12` 的 DNAT 到 `particepsbr0` 及其返回流量，解决 Docker 的默认 FORWARD DROP。服务配置已保存，尚未做整机重启验证。
+
 这里的 IPv4 是私网地址，`fd7a:9c42:6e10::/48` 是 IPv6 本地地址范围（ULA）。它们适合在这台 Windows 电脑上模拟访问多地址母机和不同网段的小鸡，不代表获得了公网地址、运营商路由或公网 IPv6 出口。
 
 ## 网络如何连接
@@ -75,4 +77,4 @@ flowchart LR
 
 `internal/core/instances.go` 的 IPv6 地址分配、NIC 写入和路由配置仍有缺口。本次没有通过 Agent API 保存小鸡的新增 IPv6，也不是由面板自动发放的；不能用面板字段或现有 `v6`/`dual` 选项宣称创建功能已通过。NAT66、指定 IPv4 SNAT 出口、共享 IPv4 DNAT 聚合、真实公网连通与租户隔离仍需各自实现和验收。
 
-后续按 [功能批次](../quality/functional-audit.md) 推进：先完成 F03 共享 IPv4 端口映射，用两台测试小鸡检查创建、访问和删除后的规则；F04 的 IPv6 配置与分配再利用本环境单独开发和验收。本次没有运行或更新全部 81 项正式验收。
+F03 已利用本环境完成两个入口 IPv4 的转发实测，测试实例与对象随后清理。后续按 [功能批次](../quality/functional-audit.md) 推进资源限制以及 F04 的 IPv6 配置与分配；本记录没有改变全部 81 项正式验收结论。
