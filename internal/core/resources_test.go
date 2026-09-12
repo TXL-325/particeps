@@ -33,6 +33,7 @@ type resourceBackend struct {
 func (b *resourceBackend) GetState(string) (*incusx.InstanceState, error) {
 	return &incusx.InstanceState{Status: "Running", StatusCode: 103}, nil
 }
+func (b *resourceBackend) ListForwards(string) ([]incusx.Forward, error) { return nil, nil }
 func (b *resourceBackend) GetConfig(string) (map[string]any, error) {
 	if b.patches > 0 && b.readbackError != nil {
 		return nil, b.readbackError
@@ -124,7 +125,9 @@ func testApp(t *testing.T) (*App, *resourceBackend) {
 			"eth0": {"type": "nic", "network": "particepsbr0", "name": "eth0"},
 		},
 	}
-	a := &App{Cfg: cfg, Store: s, Metrics: m, Auth: &auth.Auth{S: s}, Incus: b, Cap: cgroupcap.Status{Applied: true, Cores: 2}, sem: make(chan struct{}, 2)}
+	a := &App{Cfg: cfg, Store: s, Metrics: m, Auth: &auth.Auth{S: s}, Incus: b, Cap: cgroupcap.Status{Applied: true, Cores: 2}, sem: make(chan struct{}, 2),
+		hostPorts: func() (map[int]bool, error) { return map[int]bool{}, nil }}
+	a.clearNAT = func([]Port) error { return nil }
 	_, err = s.DB.Exec(`INSERT INTO instances(id,name,incus_name,display_name,image,cpu_cores,memory_mib,disk_gib,stack_mode,desired_power,created_at)
 		VALUES('guest','guest','p-guest','guest','alpine/3.21/cloud',0.5,128,4,'v4','running',0)`)
 	if err != nil {

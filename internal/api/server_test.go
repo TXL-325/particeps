@@ -96,3 +96,36 @@ func TestReadTokenCannotMutateAndRevocationIsImmediate(t *testing.T) {
 		t.Fatalf("revoked token status=%d", w.Code)
 	}
 }
+
+func TestPortMutationsRequireManagePermissionAndSameOrigin(t *testing.T) {
+	paths := []struct{ method, path string }{
+		{http.MethodPost, "/api/v1/instances/guest/ports"},
+		{http.MethodPatch, "/api/v1/instances/guest/ports/20000/tcp"},
+		{http.MethodPost, "/api/v1/instances/guest/ports/sync"},
+	}
+	for _, route := range paths {
+		s, session := testServer(t)
+		_, token, err := s.App.TokenCreate("reader", "read")
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, mode := range []string{"anonymous", "read-token", "cross-origin"} {
+			r := httptest.NewRequest(route.method, "http://agent.test"+route.path, strings.NewReader(`{}`))
+			want := http.StatusForbidden
+			switch mode {
+			case "anonymous":
+				want = http.StatusUnauthorized
+			case "read-token":
+				r.Header.Set("Authorization", "Bearer "+token)
+			case "cross-origin":
+				r.AddCookie(&http.Cookie{Name: "particeps_session", Value: session})
+				r.Header.Set("Origin", "http://other.test")
+			}
+			w := httptest.NewRecorder()
+			s.Handler().ServeHTTP(w, r)
+			if w.Code != want {
+				t.Errorf("%s %s: got %d, want %d", route.path, mode, w.Code, want)
+			}
+		}
+	}
+}

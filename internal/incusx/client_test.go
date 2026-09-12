@@ -131,3 +131,21 @@ func TestConfigOperationDistinguishesRunningAndTerminalStates(t *testing.T) {
 		})
 	}
 }
+
+func TestPowerWaitKeepsUnknownAndTerminalFailuresDistinct(t *testing.T) {
+	for _, code := range []int{103, 400, 200} {
+		t.Run(fmt.Sprint(code), func(t *testing.T) {
+			client := testClient(t, func(w http.ResponseWriter, r *http.Request) {
+				if r.Method == http.MethodPut {
+					_, _ = fmt.Fprint(w, `{"type":"async","operation":"/1.0/operations/power"}`)
+					return
+				}
+				operationResponse(w, code, "", nil)
+			})
+			err := client.SetState("guest", "stop", false)
+			if PowerOperationTerminal(err) != (code != 103) || (err == nil) != (code == 200) {
+				t.Fatalf("power status %d: terminal=%t error=%v", code, PowerOperationTerminal(err), err)
+			}
+		})
+	}
+}

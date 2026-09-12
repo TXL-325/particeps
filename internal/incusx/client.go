@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -52,6 +53,7 @@ func (c *Client) q(path string) string {
 }
 
 type opResp struct {
+	ETag       string          `json:"-"`
 	Type       string          `json:"type"`
 	Status     string          `json:"status"`
 	StatusCode int             `json:"status_code"`
@@ -66,6 +68,24 @@ func (c *Client) do(method, path string, body any) (*opResp, error) {
 }
 
 func (c *Client) doContext(ctx context.Context, method, path string, body any) (*opResp, error) {
+	return c.doContextHeaders(ctx, method, path, body, nil)
+}
+
+// StatusError keeps HTTP failures distinguishable from transport/decoding errors.
+// In particular, a lost connection must never be treated as a missing resource.
+type StatusError struct {
+	Code    int
+	Message string
+}
+
+func (e *StatusError) Error() string { return e.Message }
+
+func IsStatus(err error, code int) bool {
+	var status *StatusError
+	return errors.As(err, &status) && status.Code == code
+}
+
+func (c *Client) doContextHeaders(ctx context.Context, method, path string, body any, headers http.Header) (*opResp, error) {
 	var rdr io.Reader
 	if body != nil {
 		b, err := json.Marshal(body)
@@ -81,6 +101,9 @@ func (c *Client) doContext(ctx context.Context, method, path string, body any) (
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
+	for key, values := range headers {
+		req.Header[key] = values
+	}
 	res, err := c.http.Do(req)
 	if err != nil {
 		return nil, err
@@ -95,7 +118,11 @@ func (c *Client) doContext(ctx context.Context, method, path string, body any) (
 		return nil, fmt.Errorf("incus %s %s: invalid response (HTTP %d)", method, path, res.StatusCode)
 	}
 	if res.StatusCode < 200 || res.StatusCode >= 300 || out.Type == "error" || out.ErrorCode >= 400 || out.StatusCode >= 400 || out.Error != "" {
-		return &out, fmt.Errorf("incus %s %s failed (HTTP %d): %s", method, path, res.StatusCode, out.Error)
+		code := res.StatusCode
+		if code < 400 && out.ErrorCode >= 400 {
+			code = out.ErrorCode
+		}
+		return &out, &StatusError{Code: code, Message: fmt.Sprintf("incus %s %s failed (HTTP %d): %s", method, path, res.StatusCode, out.Error)}
 	}
 	if out.Type != "sync" && out.Type != "async" {
 		return nil, fmt.Errorf("incus %s %s: missing response type", method, path)
@@ -103,6 +130,7 @@ func (c *Client) doContext(ctx context.Context, method, path string, body any) (
 	if out.Type == "async" && out.Operation == "" {
 		return nil, fmt.Errorf("incus %s %s: missing operation reference", method, path)
 	}
+	out.ETag = res.Header.Get("ETag")
 	return &out, nil
 }
 
@@ -235,9 +263,34 @@ func (c *Client) SetState(name, action string, force bool) error {
 		"timeout": 30,
 	})
 	if err != nil {
-		return err
+		return &PowerError{Terminal: out != nil && out.Type == "error" && out.Operation == "", Cause: err}
 	}
-	return c.Wait(out.Operation)
+	if out.Type == "sync" {
+		return nil
+	}
+	result, err := c.waitOperation(out.Operation)
+	if err != nil {
+		return &PowerError{Operation: out.Operation, Terminal: operationTerminal(result.StatusCode), Cause: err}
+	}
+	return nil
+}
+
+type PowerError struct {
+	Operation string
+	Terminal  bool
+	Cause     error
+}
+
+func (e *PowerError) Error() string {
+	return fmt.Sprintf("power operation %s (terminal=%t): %v", e.Operation, e.Terminal, e.Cause)
+}
+func (e *PowerError) Unwrap() error { return e.Cause }
+func PowerOperationTerminal(err error) bool {
+	if err == nil {
+		return true
+	}
+	var power *PowerError
+	return errors.As(err, &power) && power.Terminal
 }
 
 func (c *Client) DeleteInstance(name string) error {
@@ -315,33 +368,6 @@ func (c *Client) GetConfig(name string) (map[string]any, error) {
 		return nil, err
 	}
 	return m, nil
-}
-
-type Forward struct {
-	ListenAddress string `json:"listen_address"`
-	Description   string `json:"description,omitempty"`
-	Ports         []struct {
-		Protocol      string `json:"protocol"`
-		ListenPort    string `json:"listen_port"`
-		TargetPort    string `json:"target_port"`
-		TargetAddress string `json:"target_address"`
-	} `json:"ports"`
-}
-
-func (c *Client) CreateForward(network string, fw any) error {
-	out, err := c.do(http.MethodPost, "/1.0/networks/"+url.PathEscape(network)+"/forwards", fw)
-	if err != nil {
-		return err
-	}
-	return c.Wait(out.Operation)
-}
-
-func (c *Client) DeleteForward(network, listen string) error {
-	out, err := c.do(http.MethodDelete, "/1.0/networks/"+url.PathEscape(network)+"/forwards/"+url.PathEscape(listen), nil)
-	if err != nil {
-		return err
-	}
-	return c.Wait(out.Operation)
 }
 
 func (c *Client) EnsureNetwork(name, ipv4cidr string, nat bool) error {

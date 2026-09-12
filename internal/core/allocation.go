@@ -20,7 +20,11 @@ func (a *App) reserveInstance(id, name, incusName string, req CreateReq, pwLogin
 	if !status.Applied || req.CPUCores > capCores {
 		return fmt.Errorf("aggregate CPU cap is unavailable or below requested quota")
 	}
-	ports, err := a.Store.NextPorts(a.Cfg.PortsPerGuest, a.Cfg.PortPoolStart, a.Cfg.PortPoolEnd)
+	excluded, err := a.occupiedPortsLocked(nat4)
+	if err != nil {
+		return err
+	}
+	ports, err := a.Store.NextPortsExcluding(a.Cfg.PortsPerGuest, a.Cfg.PortPoolStart, a.Cfg.PortPoolEnd, excluded)
 	if err != nil {
 		return err
 	}
@@ -51,6 +55,9 @@ func (a *App) reserveInstance(id, name, incusName string, req CreateReq, pwLogin
 				return err
 			}
 		}
+	}
+	if err := recordNetworkPending(tx, id); err != nil {
+		return err
 	}
 	return tx.Commit()
 }

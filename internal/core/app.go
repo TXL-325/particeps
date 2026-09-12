@@ -35,6 +35,12 @@ type App struct {
 	mu           sync.Mutex
 	resourceMu   sync.Mutex
 	allocationMu sync.Mutex
+	hostPorts    func() (map[int]bool, error)
+	clearNAT     func([]Port) error
+	dirLock      *os.File
+	collectStop  chan struct{}
+	collectDone  chan struct{}
+	closeOnce    sync.Once
 	cpuMu        sync.RWMutex
 	applyCap     func(float64) cgroupcap.Status
 	credentialMu sync.Mutex
@@ -72,6 +78,16 @@ func Open(cfg config.Config) (*App, error) {
 	if err := os.MkdirAll(cfg.DataDir, 0700); err != nil {
 		return nil, err
 	}
+	lock, err := lockDataDirectory(cfg.DataDir)
+	if err != nil {
+		return nil, err
+	}
+	opened := false
+	defer func() {
+		if !opened {
+			_ = lock.Close()
+		}
+	}()
 	st, err := store.Open(cfg.StateDB())
 	if err != nil {
 		return nil, err
@@ -87,14 +103,17 @@ func Open(cfg config.Config) (*App, error) {
 		return nil, err
 	}
 	a := &App{
-		Cfg:        cfg,
-		Store:      st,
-		Metrics:    mt,
-		Auth:       &auth.Auth{S: st},
-		Host:       hostmetrics.NewSampler(hostmetrics.DefaultUplink()),
-		prevInst:   map[string]sample.Point{},
-		prevInstAt: map[string]time.Time{},
-		sem:        make(chan struct{}, cfg.TaskConcurrency),
+		Cfg:         cfg,
+		Store:       st,
+		Metrics:     mt,
+		Auth:        &auth.Auth{S: st},
+		Host:        hostmetrics.NewSampler(hostmetrics.DefaultUplink()),
+		prevInst:    map[string]sample.Point{},
+		prevInstAt:  map[string]time.Time{},
+		sem:         make(chan struct{}, cfg.TaskConcurrency),
+		dirLock:     lock,
+		collectStop: make(chan struct{}),
+		collectDone: make(chan struct{}),
 	}
 	capCores := cfg.CPUCapCores
 	if v := st.Setting("cpu_cap_cores", ""); v != "" {
@@ -113,6 +132,7 @@ func Open(cfg config.Config) (*App, error) {
 	a.Cap = cgroupcap.Apply(capCores)
 	a.Incus = incusx.Connect(cfg.IncusSocket, cfg.IncusProject)
 	a.seedImages()
+	opened = true
 	go a.collectLoop()
 	return a, nil
 }
@@ -124,8 +144,17 @@ func (a *App) seedImages() {
 }
 
 func (a *App) Close() {
-	_ = a.Store.Close()
-	_ = a.Metrics.Close()
+	a.closeOnce.Do(func() {
+		if a.collectStop != nil {
+			close(a.collectStop)
+			<-a.collectDone
+		}
+		_ = a.Store.Close()
+		_ = a.Metrics.Close()
+		if a.dirLock != nil {
+			_ = a.dirLock.Close()
+		}
+	})
 }
 
 func (a *App) BootstrapAdmin() (string, error) {
@@ -238,10 +267,16 @@ func hashReq(v any) string {
 }
 
 func (a *App) collectLoop() {
+	defer close(a.collectDone)
 	t := time.NewTicker(time.Duration(a.Cfg.SampleSeconds) * time.Second)
 	defer t.Stop()
-	for range t.C {
-		a.sampleOnce()
+	for {
+		select {
+		case <-a.collectStop:
+			return
+		case <-t.C:
+			a.sampleOnce()
+		}
 	}
 }
 
@@ -268,6 +303,7 @@ func (a *App) sampleOnce() {
 		if err == nil {
 			pt.CPUNs = uint64(st.CPU.Usage)
 			pt.Rx, pt.Tx = incusx.GuestNetTotals(st)
+			a.refreshForwardAddress(id, st)
 		}
 		a.mu.Lock()
 		prev := a.prevInst[id]

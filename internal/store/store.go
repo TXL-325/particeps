@@ -91,6 +91,40 @@ CREATE TABLE IF NOT EXISTS resource_updates (
   request_json TEXT NOT NULL,
   created_at INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS instance_network (
+  instance_id TEXT PRIMARY KEY REFERENCES instances(id) ON DELETE CASCADE,
+  target_ipv4 TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'pending',
+  last_error TEXT NOT NULL DEFAULT '',
+  deleting INTEGER NOT NULL DEFAULT 0,
+  uncertain INTEGER NOT NULL DEFAULT 0,
+  updated_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS forward_writes (
+  network TEXT NOT NULL,
+  listen_address TEXT NOT NULL,
+  token TEXT NOT NULL UNIQUE,
+  instance_id TEXT NOT NULL REFERENCES instances(id),
+  phase TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY(network,listen_address)
+);
+CREATE TABLE IF NOT EXISTS conntrack_cleanup (
+  instance_id TEXT NOT NULL REFERENCES instances(id),
+  listen_address TEXT NOT NULL,
+  number INTEGER NOT NULL,
+  proto TEXT NOT NULL,
+  reply_address TEXT NOT NULL DEFAULT '',
+  reply_port INTEGER NOT NULL DEFAULT 0,
+  direct_binding INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY(instance_id,listen_address,number,proto,reply_address,reply_port)
+);
+CREATE TRIGGER IF NOT EXISTS ports_single_owner_insert BEFORE INSERT ON ports
+WHEN EXISTS (SELECT 1 FROM ports WHERE number=NEW.number AND instance_id!=NEW.instance_id)
+BEGIN SELECT RAISE(ABORT,'port number already belongs to another instance'); END;
+CREATE TRIGGER IF NOT EXISTS ports_single_owner_update BEFORE UPDATE OF number,instance_id ON ports
+WHEN EXISTS (SELECT 1 FROM ports WHERE number=NEW.number AND instance_id!=NEW.instance_id)
+BEGIN SELECT RAISE(ABORT,'port number already belongs to another instance'); END;
 CREATE TABLE IF NOT EXISTS tasks (
   id TEXT PRIMARY KEY,
   kind TEXT NOT NULL,
@@ -126,6 +160,33 @@ CREATE TABLE IF NOT EXISTS traffic (
 UPDATE task_items SET result_json='' WHERE CASE WHEN json_valid(result_json)
   THEN json_type(result_json,'$.password') IS NOT NULL ELSE 0 END;
 `)
+	if err != nil {
+		return err
+	}
+	// Early development databases may already contain the cleanup queue.
+	rows, err := s.DB.Query(`PRAGMA table_info(conntrack_cleanup)`)
+	if err != nil {
+		return err
+	}
+	found := false
+	for rows.Next() {
+		var cid, required, primary int
+		var name, kind string
+		var defaultValue any
+		if err := rows.Scan(&cid, &name, &kind, &required, &defaultValue, &primary); err != nil {
+			_ = rows.Close()
+			return err
+		}
+		found = found || name == "direct_binding"
+	}
+	err = rows.Err()
+	_ = rows.Close()
+	if err != nil {
+		return err
+	}
+	if !found {
+		_, err = s.DB.Exec(`ALTER TABLE conntrack_cleanup ADD COLUMN direct_binding INTEGER NOT NULL DEFAULT 0`)
+	}
 	return err
 }
 
@@ -168,6 +229,10 @@ func NewID() string {
 func Now() int64 { return time.Now().Unix() }
 
 func (s *Store) NextPorts(n, start, end int) ([]int, error) {
+	return s.NextPortsExcluding(n, start, end, nil)
+}
+
+func (s *Store) NextPortsExcluding(n, start, end int, excluded map[int]bool) ([]int, error) {
 	if n < 1 || start < 1 || end > 65535 || start > end || n > end-start+1 {
 		return nil, fmt.Errorf("invalid port pool or allocation size")
 	}
@@ -177,6 +242,9 @@ func (s *Store) NextPorts(n, start, end int) ([]int, error) {
 	}
 	defer rows.Close()
 	used := map[int]bool{}
+	for number, blocked := range excluded {
+		used[number] = blocked
+	}
 	for rows.Next() {
 		var num int
 		if err := rows.Scan(&num); err != nil {

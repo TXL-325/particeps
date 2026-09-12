@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 
 	"particeps/internal/auth"
@@ -40,6 +41,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/v1/instances/{id}/delete", s.auth(true, s.delInst))
 	mux.HandleFunc("POST /api/v1/instances/{id}/rebuild", s.auth(true, s.rebuild))
 	mux.HandleFunc("PATCH /api/v1/instances/{id}/resources", s.auth(true, s.patchRes))
+	mux.HandleFunc("POST /api/v1/instances/{id}/ports", s.auth(true, s.addPort))
+	mux.HandleFunc("PATCH /api/v1/instances/{id}/ports/{number}/{proto}", s.auth(true, s.editPort))
+	mux.HandleFunc("POST /api/v1/instances/{id}/ports/sync", s.auth(true, s.syncPorts))
 	mux.HandleFunc("POST /api/v1/instances/{id}/password", s.auth(true, s.resetPW))
 	mux.HandleFunc("GET /api/v1/instances/{id}/processes", s.auth(false, s.procs))
 	mux.HandleFunc("GET /api/v1/instances/{id}/metrics", s.auth(false, s.metrics))
@@ -273,6 +277,47 @@ func (s *Server) delInst(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, 200, map[string]string{"ok": "1"})
+}
+
+func (s *Server) addPort(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Number int `json:"number"`
+	}
+	if !decodeJSON(w, r, &body) {
+		return
+	}
+	if err := s.App.AddPort(r.PathValue("id"), body.Number); err != nil {
+		writeErr(w, http.StatusConflict, err.Error())
+		return
+	}
+	s.getInst(w, r)
+}
+
+func (s *Server) editPort(w http.ResponseWriter, r *http.Request) {
+	number, err := strconv.Atoi(r.PathValue("number"))
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid port number")
+		return
+	}
+	var body struct {
+		Target int `json:"target"`
+	}
+	if !decodeJSON(w, r, &body) {
+		return
+	}
+	if err := s.App.EditPort(r.PathValue("id"), number, r.PathValue("proto"), body.Target); err != nil {
+		writeErr(w, http.StatusConflict, err.Error())
+		return
+	}
+	s.getInst(w, r)
+}
+
+func (s *Server) syncPorts(w http.ResponseWriter, r *http.Request) {
+	if err := s.App.SyncPorts(r.PathValue("id")); err != nil {
+		writeErr(w, http.StatusConflict, err.Error())
+		return
+	}
+	s.getInst(w, r)
 }
 
 func (s *Server) rebuild(w http.ResponseWriter, r *http.Request) {

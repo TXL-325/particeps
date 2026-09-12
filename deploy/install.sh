@@ -21,7 +21,7 @@ fi
 
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -y
-apt-get install -y incus-base incus-client lvm2 thin-provisioning-tools uidmap
+apt-get install -y incus-base incus-client lvm2 thin-provisioning-tools uidmap conntrack
 
 systemctl enable --now incus.service incus.socket || systemctl enable --now incus
 

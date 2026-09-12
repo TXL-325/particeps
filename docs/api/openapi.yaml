@@ -27,6 +27,65 @@ paths:
   /instances/{id}:
     get:
       summary: 小鸡详情
+  /instances/{id}/ports:
+    parameters:
+      - $ref: '#/components/parameters/InstanceID'
+    post:
+      summary: 为小鸡追加一个 TCP/UDP 号码
+      description: 仅管理会话或管理 Token 可调用；Cookie 写请求须通过同源检查。号码为 0 或省略时自动选择，否则须在配置池内且没有冲突。两种协议一起分配。409 不代表回滚：分配可能已持久保存，必须重新读取实例的 networkStatus。
+      security: [{ sessionCookie: [] }, { bearerToken: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                number: { type: integer, minimum: 0, maximum: 65535, default: 0 }
+      responses:
+        "200": { $ref: '#/components/responses/PortInstance' }
+        "400": { description: JSON 无效或包含未知字段 }
+        "401": { description: 未认证 }
+        "403": { description: 只读 Token 或来源校验失败 }
+        "409": { $ref: '#/components/responses/PortConflict' }
+  /instances/{id}/ports/{number}/{proto}:
+    parameters:
+      - $ref: '#/components/parameters/InstanceID'
+      - { name: number, in: path, required: true, schema: { type: integer, minimum: 1, maximum: 65535 } }
+      - { name: proto, in: path, required: true, schema: { type: string, enum: [tcp, udp] } }
+    patch:
+      summary: 修改已有协议规则的目标端口
+      description: 保留号码和实例归属。修改后清理旧目标的 NAT 连接，不影响其他实例；停止状态只保存目标。失败可能已保存新目标，须重新读取状态，不能把旧界面缓存当成已应用结果。
+      security: [{ sessionCookie: [] }, { bearerToken: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [target]
+              properties:
+                target: { type: integer, minimum: 1, maximum: 65535 }
+      responses:
+        "200": { $ref: '#/components/responses/PortInstance' }
+        "400": { description: 路径号码或 JSON 无效 }
+        "401": { description: 未认证 }
+        "403": { description: 只读 Token 或来源校验失败 }
+        "409": { $ref: '#/components/responses/PortConflict' }
+  /instances/{id}/ports/sync:
+    parameters:
+      - $ref: '#/components/parameters/InstanceID'
+    post:
+      summary: 核对并重新应用已保存的端口分配
+      description: 仅处理结果已知的待应用配置。不重发仍可能执行的转发或电源操作；needs-reconciliation 状态保留资源，等待人工核对。该接口不会证明公网可达。
+      security: [{ sessionCookie: [] }, { bearerToken: [] }]
+      responses:
+        "200": { $ref: '#/components/responses/PortInstance' }
+        "401": { description: 未认证 }
+        "403": { description: 只读 Token 或来源校验失败 }
+        "409": { $ref: '#/components/responses/PortConflict' }
   /tasks/{id}:
     get:
       summary: 任务进度（不返回密码）
@@ -64,3 +123,43 @@ paths:
         "401": { description: 未认证 }
         "403": { description: 只读 Token 或来源校验失败 }
         "409": { description: 任务或凭据状态冲突，需要核对或重置密码 }
+components:
+  securitySchemes:
+    sessionCookie: { type: apiKey, in: cookie, name: particeps_session }
+    bearerToken: { type: http, scheme: bearer }
+  parameters:
+    InstanceID: { name: id, in: path, required: true, schema: { type: string } }
+  responses:
+    PortConflict:
+      description: 号码冲突、后端未确认或需要继续清理。返回错误时号码/目标可能已经保存，请 GET 实例检查状态；不得把重复请求当成安全回滚。
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [error]
+            properties:
+              error: { type: string }
+    PortInstance:
+      description: 最新实例。端口字段为已保存的分配，是否应用以 networkStatus 为准；停止实例的规则可为 inactive。
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [id, networkStatus]
+            properties:
+              id: { type: string }
+              networkStatus:
+                type: string
+                enum: [unconfigured, pending, ready, inactive, waiting-address, cleanup-pending, needs-reconciliation]
+                description: ready 表示规则已回读且旧 NAT 连接处理完成，不代表防火墙、路由和小鸡服务的外部可达性已验证。
+              networkError: { type: string }
+              ports:
+                type: array
+                items:
+                  type: object
+                  required: [number, proto, listenIp, target]
+                  properties:
+                    number: { type: integer }
+                    proto: { type: string, enum: [tcp, udp] }
+                    listenIp: { type: string }
+                    target: { type: integer }

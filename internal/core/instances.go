@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"strings"
 	"time"
 
@@ -32,6 +33,8 @@ type Instance struct {
 	IPv6Mode       string   `json:"ipv6Mode"`
 	Status         string   `json:"status"`
 	ResourceStatus string   `json:"resourceStatus"`
+	NetworkStatus  string   `json:"networkStatus"`
+	NetworkError   string   `json:"networkError,omitempty"`
 	CPUUsed        float64  `json:"cpuUsed"`
 	MemUsed        int64    `json:"memUsed"`
 	RxBps          *float64 `json:"rxBps"`
@@ -42,10 +45,12 @@ type Instance struct {
 }
 
 type Port struct {
-	Number   int    `json:"number"`
-	Proto    string `json:"proto"`
-	ListenIP string `json:"listenIp"`
-	Target   int    `json:"target"`
+	replyAddress  string
+	directBinding bool
+	Number        int    `json:"number"`
+	Proto         string `json:"proto"`
+	ListenIP      string `json:"listenIp"`
+	Target        int    `json:"target"`
 }
 
 type Task struct {
@@ -66,7 +71,10 @@ type TaskItem struct {
 
 func (a *App) ListInstances() ([]Instance, error) {
 	rows, err := a.Store.DB.Query(`SELECT id,name,incus_name,image,cpu_cores,cpu_pin,memory_mib,disk_gib,bandwidth_mbps,stack_mode,desired_power,nat_ipv4,dedicated_ipv4,ipv6,ipv6_mode,
-		EXISTS(SELECT 1 FROM resource_updates WHERE instance_id=instances.id) FROM instances ORDER BY created_at`)
+		EXISTS(SELECT 1 FROM resource_updates WHERE instance_id=instances.id),
+		CASE WHEN EXISTS(SELECT 1 FROM forward_writes w WHERE w.listen_address=instances.nat_ipv4)
+		THEN 'needs-reconciliation' ELSE COALESCE((SELECT status FROM instance_network WHERE instance_id=instances.id),'unconfigured') END,
+		COALESCE((SELECT last_error FROM instance_network WHERE instance_id=instances.id),'') FROM instances ORDER BY created_at`)
 	if err != nil {
 		return nil, err
 	}
@@ -75,7 +83,7 @@ func (a *App) ListInstances() ([]Instance, error) {
 	for rows.Next() {
 		var in Instance
 		var pending bool
-		if err := rows.Scan(&in.ID, &in.Name, &in.IncusName, &in.Image, &in.CPUCores, &in.CPUPin, &in.MemoryMiB, &in.DiskGiB, &in.BandwidthMbps, &in.StackMode, &in.DesiredPower, &in.NATIPv4, &in.DedicatedIPv4, &in.IPv6, &in.IPv6Mode, &pending); err != nil {
+		if err := rows.Scan(&in.ID, &in.Name, &in.IncusName, &in.Image, &in.CPUCores, &in.CPUPin, &in.MemoryMiB, &in.DiskGiB, &in.BandwidthMbps, &in.StackMode, &in.DesiredPower, &in.NATIPv4, &in.DedicatedIPv4, &in.IPv6, &in.IPv6Mode, &pending, &in.NetworkStatus, &in.NetworkError); err != nil {
 			return nil, err
 		}
 		in.ResourceStatus = "ready"
@@ -113,8 +121,8 @@ func (a *App) GetInstance(id string) (Instance, []Port, error) {
 	}
 	for _, in := range list {
 		if in.ID == id || in.Name == id {
-			ports, _ := a.instancePorts(in.ID)
-			return in, ports, nil
+			ports, err := a.instancePorts(in.ID)
+			return in, ports, err
 		}
 	}
 	return Instance{}, nil, fmt.Errorf("instance not found")
@@ -134,7 +142,7 @@ func (a *App) instancePorts(id string) ([]Port, error) {
 		}
 		out = append(out, p)
 	}
-	return out, nil
+	return out, rows.Err()
 }
 
 func (a *App) SubmitCreate(req CreateReq, idem string) (Task, error) {
@@ -327,6 +335,12 @@ func (a *App) runCreateItem(taskID, name string, req CreateReq) {
 			v6addr = pool.IPv6[0]
 		}
 	}
+	// Publish the worker's identity before its instance becomes visible. Lifecycle
+	// requests must not delete an instance while this worker is still creating it.
+	if _, err := a.Store.DB.Exec(`UPDATE task_items SET instance_id=?,step='reserve' WHERE task_id=? AND name=?`, id, taskID, name); err != nil {
+		set("failed", "reserve", err.Error(), "", "")
+		return
+	}
 	if err := a.reserveInstance(id, name, incusName, req, pwLogin, nat4, v6addr, v6mode); err != nil {
 		set("failed", "reserve", err.Error(), "", "")
 		return
@@ -398,44 +412,6 @@ func (a *App) runCreateItem(taskID, name string, req CreateReq) {
 	set("ok", "done", "", id, extra)
 }
 
-func (a *App) applyForwards(instanceID, incusName, listen string) error {
-	st, err := a.Incus.GetState(incusName)
-	if err != nil {
-		return err
-	}
-	guestIP := incusx.GuestIPv4(st)
-	if guestIP == "" {
-		time.Sleep(2 * time.Second)
-		st, err = a.Incus.GetState(incusName)
-		if err != nil {
-			return err
-		}
-		guestIP = incusx.GuestIPv4(st)
-	}
-	if guestIP == "" {
-		return fmt.Errorf("no guest ipv4 yet")
-	}
-	ports, _ := a.instancePorts(instanceID)
-	if len(ports) == 0 {
-		return nil
-	}
-	return a.Incus.CreateForward(a.Cfg.Network, toForward(listen, guestIP, ports))
-}
-
-func toForward(listen, guest string, ports []Port) interface{} {
-	type p struct {
-		Protocol      string `json:"protocol"`
-		ListenPort    string `json:"listen_port"`
-		TargetPort    string `json:"target_port"`
-		TargetAddress string `json:"target_address"`
-	}
-	var ps []p
-	for _, x := range ports {
-		ps = append(ps, p{x.Proto, fmt.Sprintf("%d", x.Number), fmt.Sprintf("%d", x.Target), guest})
-	}
-	return map[string]any{"listen_address": listen, "ports": ps}
-}
-
 func assignFromPrefix(pfx, id string) string {
 	// pfx like 2001:db8::/64 — place a host from id hex in the last 16 bits
 	base := strings.Split(pfx, "/")[0]
@@ -494,70 +470,130 @@ func (a *App) GetTask(id string) (Task, error) {
 }
 
 func (a *App) Power(id, action string, force bool) error {
-	in, _, err := a.GetInstance(id)
+	a.allocationMu.Lock()
+	defer a.allocationMu.Unlock()
+	n, err := a.mutableNetwork(id)
 	if err != nil {
 		return err
 	}
-	act := action
-	if action == "stop" && force {
-		act = "stop"
+	if action != "start" && action != "stop" && action != "restart" {
+		return fmt.Errorf("unsupported power action")
 	}
-	if err := a.Incus.SetState(in.IncusName, act, force); err != nil {
-		msg := err.Error()
-		if action == "start" && strings.Contains(msg, "already running") {
-			return nil
-		}
-		if action == "stop" && strings.Contains(msg, "already stopped") {
-			return nil
-		}
-		return err
+	if n.Uncertain {
+		return fmt.Errorf("an earlier forward write needs reconciliation before changing power")
 	}
 	desired := "running"
 	if action == "stop" {
 		desired = "stopped"
 	}
-	_, _ = a.Store.DB.Exec(`UPDATE instances SET desired_power=? WHERE id=?`, desired, in.ID)
+	if err := a.markNetwork(n.ID, "pending", ""); err != nil {
+		return err
+	}
+	if _, err := a.Store.DB.Exec(`UPDATE instances SET desired_power=? WHERE id=?`, desired, n.ID); err != nil {
+		return err
+	}
+	// Stop/restart may release a dynamic DHCP address. Deactivate only this
+	// guest's DNAT first while retaining its allocation and edited targets.
+	if err := a.cleanupForwardsLocked(n); err != nil {
+		return a.networkFailure(n.ID, "pending", err)
+	}
+	if err := a.markNetwork(n.ID, "inactive", ""); err != nil {
+		return err
+	}
+	// Persist before dispatch. A crash or unfinished stop/restart must never
+	// permit a later request to recreate DNAT to an address about to be released.
+	if _, err := a.Store.DB.Exec(`UPDATE instance_network SET uncertain=1,status='needs-reconciliation' WHERE instance_id=?`, n.ID); err != nil {
+		return err
+	}
+	if err := a.Incus.SetState(n.IncusName, action, force); err != nil {
+		if !incusx.PowerOperationTerminal(err) {
+			return a.networkFailure(n.ID, "needs-reconciliation", err)
+		}
+		if _, clearErr := a.Store.DB.Exec(`UPDATE instance_network SET uncertain=0 WHERE instance_id=?`, n.ID); clearErr != nil {
+			return clearErr
+		}
+		state, readErr := a.Incus.GetState(n.IncusName)
+		already := readErr == nil && ((action == "start" && strings.EqualFold(state.Status, "Running")) || (action == "stop" && strings.EqualFold(state.Status, "Stopped")))
+		if !already {
+			return a.networkFailure(n.ID, "pending", err)
+		}
+	}
+	if _, err := a.Store.DB.Exec(`UPDATE instance_network SET uncertain=0,status='inactive' WHERE instance_id=?`, n.ID); err != nil {
+		return err
+	}
+	if desired == "running" {
+		return a.syncPortsLocked(n, true)
+	}
 	return nil
 }
 
 func (a *App) DeleteInstance(id string) error {
-	in, _, err := a.GetInstance(id)
+	a.resourceMu.Lock()
+	defer a.resourceMu.Unlock()
+	a.allocationMu.Lock()
+	defer a.allocationMu.Unlock()
+	n, err := a.networkRecord(id)
 	if err != nil {
 		return err
 	}
-	_ = a.Incus.SetState(in.IncusName, "stop", true)
-	if in.NATIPv4 != "" {
-		var others int
-		_ = a.Store.DB.QueryRow(`SELECT COUNT(*) FROM instances WHERE nat_ipv4=? AND id!=?`, in.NATIPv4, in.ID).Scan(&others)
-		if others == 0 {
-			_ = a.Incus.DeleteForward(a.Cfg.Network, in.NATIPv4)
-		}
+	if n.Uncertain {
+		return fmt.Errorf("cannot delete while a forward write may still be active; manual reconciliation required")
 	}
-	if err := a.Incus.DeleteInstance(in.IncusName); err != nil && !strings.Contains(err.Error(), "not found") {
+	creating, err := a.instanceCreating(n.ID)
+	if err != nil {
 		return err
 	}
-	_, _ = a.Store.DB.Exec(`DELETE FROM ports WHERE instance_id=?`, in.ID)
-	_, _ = a.Store.DB.Exec(`DELETE FROM instances WHERE id=?`, in.ID)
-	return nil
+	if creating {
+		return fmt.Errorf("instance creation is still in progress")
+	}
+	if _, err := a.Store.DB.Exec(`INSERT INTO instance_network(instance_id,status,deleting,updated_at) VALUES(?,'cleanup-pending',1,?)
+		ON CONFLICT(instance_id) DO UPDATE SET status='cleanup-pending',deleting=1,last_error='',updated_at=excluded.updated_at`, n.ID, store.Now()); err != nil {
+		return err
+	}
+	fail := func(err error) error { return a.networkFailure(n.ID, "cleanup-pending", err) }
+	// Remove this instance's rules before releasing its DHCP address. A failed
+	// cleanup leaves the instance and every port reserved, with a retryable state.
+	if err := a.cleanupForwardsLocked(n); err != nil {
+		return fail(err)
+	}
+	state, err := a.Incus.GetState(n.IncusName)
+	if err != nil && !incusx.IsStatus(err, http.StatusNotFound) {
+		return fail(err)
+	}
+	if err == nil {
+		if !strings.EqualFold(state.Status, "Stopped") {
+			if err := a.Incus.SetState(n.IncusName, "stop", true); err != nil {
+				return fail(err)
+			}
+		}
+		if err := a.Incus.DeleteInstance(n.IncusName); err != nil && !incusx.IsStatus(err, http.StatusNotFound) {
+			return fail(err)
+		}
+	}
+	if _, err := a.Incus.GetConfig(n.IncusName); !incusx.IsStatus(err, http.StatusNotFound) {
+		if err == nil {
+			err = fmt.Errorf("instance still exists after deletion")
+		}
+		return fail(err)
+	}
+	tx, err := a.Store.DB.Begin()
+	if err != nil {
+		return fail(err)
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(`DELETE FROM ports WHERE instance_id=?`, n.ID); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM instances WHERE id=?`, n.ID); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (a *App) Rebuild(id, image string) error {
-	in, _, err := a.GetInstance(id)
-	if err != nil {
-		return err
-	}
-	if image == "" {
-		image = in.Image
-	}
-	_ = a.Incus.SetState(in.IncusName, "stop", true)
-	if err := a.Incus.Rebuild(in.IncusName, image); err != nil {
-		_, _ = a.Store.DB.Exec(`INSERT INTO tasks(id,kind,request_hash,status,created_at,updated_at) VALUES(?,?,?,?,?,?)`,
-			store.NewID(), "rebuild", in.ID, "needs-review", store.Now(), store.Now())
-		return err
-	}
-	_ = a.Incus.SetState(in.IncusName, "start", false)
-	_, _ = a.Store.DB.Exec(`UPDATE instances SET image=? WHERE id=?`, image, in.ID)
-	return nil
+	// The backend still has no rebuild implementation. Reject before stopping a
+	// guest or exposing a recycled DHCP address through its existing forwards.
+	return fmt.Errorf("rebuild is not implemented")
 }
 
 func (a *App) PatchResources(id string, cpuCores *float64, pin *string, mem *int, disk *int, bw *int) error {
@@ -718,14 +754,14 @@ func (a *App) ResetPassword(id, password string) (string, error) {
 }
 
 func (a *App) RestoreDesiredPower() {
-	rows, err := a.Store.DB.Query(`SELECT incus_name, desired_power FROM instances`)
+	rows, err := a.Store.DB.Query(`SELECT id,incus_name,desired_power FROM instances WHERE id NOT IN (SELECT instance_id FROM instance_network WHERE deleting=1)`)
 	if err != nil {
 		return
 	}
 	defer rows.Close()
 	for rows.Next() {
-		var name, want string
-		if err := rows.Scan(&name, &want); err != nil {
+		var id, name, want string
+		if err := rows.Scan(&id, &name, &want); err != nil {
 			continue
 		}
 		st, err := a.Incus.GetState(name)
@@ -734,10 +770,10 @@ func (a *App) RestoreDesiredPower() {
 		}
 		running := strings.EqualFold(st.Status, "Running")
 		if want == "running" && !running {
-			_ = a.Incus.SetState(name, "start", false)
+			_ = a.Power(id, "start", false)
 		}
 		if want == "stopped" && running {
-			_ = a.Incus.SetState(name, "stop", false)
+			_ = a.Power(id, "stop", false)
 		}
 	}
 }

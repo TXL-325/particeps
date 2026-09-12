@@ -17,8 +17,10 @@ type IncusBackend interface {
 	BeginConfigUpdate(string, map[string]string, map[string]map[string]string) (incusx.ConfigOperation, error)
 	WaitConfigOperation(string) (bool, error)
 	ConfigOperationFinished(string) (bool, error)
-	CreateForward(string, any) error
-	DeleteForward(string, string) error
+	ListForwards(string) ([]incusx.Forward, error)
+	GetForward(string, string) (incusx.Forward, string, error)
+	CreateForward(string, incusx.Forward) error
+	UpdateForward(string, incusx.Forward, string) error
 	SetRootPassword(string, string) error
 	InstallRootKey(string, string) error
 }
