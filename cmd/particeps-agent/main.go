@@ -14,6 +14,7 @@ import (
 
 func main() {
 	cfgPath := flag.String("config", "/etc/particeps/config.yaml", "config file")
+	bootstrapOnly := flag.Bool("bootstrap-only", false, "initialize administrator and exit")
 	flag.Parse()
 	cfg, err := config.Load(*cfgPath)
 	if err != nil {
@@ -27,8 +28,15 @@ func main() {
 		log.Fatal(err)
 	}
 	defer app.Close()
-	if _, err := app.BootstrapAdmin(); err != nil {
+	password, err := app.BootstrapAdmin()
+	if err != nil {
 		log.Fatal(err)
+	}
+	if *bootstrapOnly {
+		if password == "" {
+			log.Printf("administrator already exists")
+		}
+		return
 	}
 	if err := app.Incus.Ready(); err != nil {
 		log.Printf("incus not ready: %v", err)

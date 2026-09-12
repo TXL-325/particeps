@@ -27,8 +27,8 @@ type Config struct {
 
 func Defaults() Config {
 	return Config{
-		Listen:              "127.0.0.1:8792",
-		SessionCookieSecure: true,
+		Listen:              "0.0.0.0:8792",
+		SessionCookieSecure: false,
 		DataDir:             "/var/lib/particeps",
 		IncusSocket:         "/var/lib/incus/unix.socket",
 		IncusProject:        "particeps",

@@ -22,7 +22,7 @@ INCUS_PROJECT="particeps"
 INCUS_NETWORK="particepsbr0"
 INCUS_POOL="particeps-pool"
 EXPECTED_IPV4="10.80.0.1/24"
-POOL_SIZE="16GiB"
+POOL_SIZE=""
 
 if [ -n "${PARTICEPS_TEST_ROOT:-}" ]; then
     PREFIX="${PARTICEPS_TEST_ROOT}"
@@ -74,7 +74,7 @@ particeps 安装脚本（仅从 GitHub Release 下载二进制）
   bash install.sh --uninstall --keep-instances
                                           只卸 Agent，保留实例与数据
   bash install.sh --tag vX.Y.Z            使用指定 Release
-  bash install.sh -y                      非交互
+  bash install.sh -y                      非交互（存储池用默认大小；不卸 Incus）
 
 环境变量：PARTICEPS_RELEASE_TAG、PARTICEPS_GITHUB_REPO
 EOF
@@ -157,6 +157,69 @@ listen_addr() {
     sed -n 's/^listen:[[:space:]]*//p' "$AGENT_CONFIG_FILE" 2>/dev/null | tail -n1
 }
 
+listen_port() {
+    local listen port
+    listen=$(listen_addr)
+    port="${listen##*:}"
+    case "$port" in
+        ''|*[!0-9]*) echo 8792 ;;
+        *) echo "$port" ;;
+    esac
+}
+
+root_avail_g() {
+    df -BG / | awk 'NR==2 {g=$4; gsub(/G/,"",g); g=int(g); if(g<0)g=0; print g}'
+}
+
+default_pool_g() {
+    local avail="$1"
+    awk -v a="$avail" 'BEGIN{
+        v=int(a*0.30)
+        if (v<1) v=1
+        if (v>25) v=25
+        if (v>a) v=a
+        print v
+    }'
+}
+
+prompt_pool_size() {
+    local avail default size confirm
+    avail=$(root_avail_g)
+    [ "${avail:-0}" -ge 1 ] || die "根分区至少需要 1G 可用（当前 ${avail:-0}G）"
+    default=$(default_pool_g "$avail")
+    if [ "$NON_INTERACTIVE" = "1" ]; then
+        POOL_SIZE="${default}GiB"
+        log "存储池大小 ${default}G（默认，可用 ${avail}G）"
+        return
+    fi
+    while true; do
+        size=""
+        read -rp "设置存储池大小[单位G][默认:${default}G]: " size || die "无法读取存储池大小"
+        if [ -z "$size" ]; then
+            size="$default"
+        elif ! [[ "$size" =~ ^[1-9][0-9]*$ ]]; then
+            echo "无效，请重新输入"
+            continue
+        elif [ "$size" -lt 1 ] || [ "$size" -gt "$avail" ]; then
+            echo "无效，请重新输入"
+            continue
+        fi
+        while true; do
+            confirm=""
+            read -rp "确认将存储池大小设为 ${size}G？[Y/n]: " confirm || die "无法读取确认"
+            case "$confirm" in
+                ""|Y|y)
+                    POOL_SIZE="${size}GiB"
+                    log "存储池大小 ${size}G"
+                    return
+                    ;;
+                N|n) break ;;
+                *) echo "无效，请重新输入" ;;
+            esac
+        done
+    done
+}
+
 sqlite_backup() {
     local src="$1" dest="$2"
     python3 - "$src" "$dest" <<'PY'
@@ -167,6 +230,29 @@ with sqlite3.connect(pathlib.Path(src).as_uri() + "?mode=ro", uri=True, timeout=
         source.backup(target)
         if target.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
             raise SystemExit("database backup failed integrity check")
+PY
+}
+
+admin_exists() {
+    local db
+    db=$(state_db_path)
+    [ -f "$db" ] || return 1
+    python3 - "$db" <<'PY'
+import sqlite3, sys
+try:
+    con = sqlite3.connect(sys.argv[1])
+    n = con.execute("SELECT COUNT(*) FROM admin").fetchone()[0]
+    sys.exit(0 if n > 0 else 1)
+except Exception:
+    sys.exit(1)
+PY
+}
+
+generate_password() {
+    python3 - <<'PY'
+import secrets, string
+alphabet = string.ascii_letters + string.digits
+print("".join(secrets.choice(alphabet) for _ in range(20)))
 PY
 }
 
@@ -193,8 +279,8 @@ write_default_config() {
     mkdir -p "$AGENT_CONFIG_DIR"
     chmod 0750 "$AGENT_CONFIG_DIR" 2>/dev/null || true
     cat > "$AGENT_CONFIG_FILE" <<EOF
-listen: 127.0.0.1:8792
-session_cookie_secure: true
+listen: 0.0.0.0:8792
+session_cookie_secure: false
 data_dir: ${AGENT_DATA_DIR}
 incus_socket: /var/lib/incus/unix.socket
 incus_project: particeps
@@ -308,6 +394,80 @@ incus_kv() {
     incus "$1" get "$2" "$3" 2>/dev/null || true
 }
 
+host_has_ipv6() {
+    command -v ip >/dev/null 2>&1 || return 1
+    local iface
+    while read -r iface; do
+        [ -n "$iface" ] || continue
+        case "$iface" in
+            lo|lo:*|docker*|br-*|veth*|incus*|lxc*|particeps*|virbr*) continue ;;
+        esac
+        return 0
+    done < <(ip -6 -o addr show scope global 2>/dev/null | awk '{print $2}')
+    return 1
+}
+
+skip_iface() {
+    case "$1" in
+        lo|lo:*|docker*|br-*|veth*|incus*|lxc*|particeps*|virbr*) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+print_panel_urls() {
+    local port iface ipaddr
+    port=$(listen_port)
+    if ! command -v ip >/dev/null 2>&1; then
+        echo "  （未检测到在用网卡 IPv4）"
+        return
+    fi
+    local found=0
+    while read -r iface ipaddr; do
+        [ -n "$iface" ] && [ -n "$ipaddr" ] || continue
+        skip_iface "$iface" && continue
+        echo "  http://${ipaddr}:${port}"
+        found=1
+    done < <(ip -4 -o addr show up 2>/dev/null | awk '{
+        iface=$2
+        for (i=1; i<=NF; i++) if ($i=="inet") {
+            ip=$(i+1); sub(/\/.*/, "", ip); print iface, ip
+        }
+    }')
+    [ "$found" = "1" ] || echo "  （未检测到在用网卡 IPv4）"
+}
+
+print_finish() {
+    local pass="$1" existing="$2"
+    echo
+    echo "安装完成"
+    echo
+    echo "面板地址"
+    print_panel_urls
+    echo
+    if [ "$existing" = "1" ]; then
+        echo "管理员已存在，未生成新密码。"
+    else
+        echo "初始密码: ${pass}"
+        echo "请立即保存。密码不会写入磁盘。"
+    fi
+}
+
+init_admin() {
+    INSTALL_ADMIN_EXISTING=0
+    INSTALL_ADMIN_PASSWORD=""
+    if admin_exists; then
+        INSTALL_ADMIN_EXISTING=1
+        return
+    fi
+    INSTALL_ADMIN_PASSWORD=$(generate_password)
+    [ -n "$INSTALL_ADMIN_PASSWORD" ] || die "生成管理员密码失败"
+    if [ "$SKIP_HOST" != "1" ]; then
+        if ! PARTICEPS_ADMIN_PASSWORD="$INSTALL_ADMIN_PASSWORD" "$AGENT_BINARY" --config "$AGENT_CONFIG_FILE" --bootstrap-only; then
+            die "写入管理员密码失败"
+        fi
+    fi
+}
+
 ensure_incus_resources() {
     if incus storage show "$INCUS_POOL" >/dev/null 2>&1; then
         local driver
@@ -315,7 +475,13 @@ ensure_incus_resources() {
         [ "$driver" = "lvm" ] || die "存储池 ${INCUS_POOL} 已存在但驱动不是 lvm，拒绝修改"
         log "存储池 ${INCUS_POOL} 已存在，不修改"
     else
+        [ -n "$POOL_SIZE" ] || die "未设置存储池大小"
         incus storage create "$INCUS_POOL" lvm size="$POOL_SIZE" lvm.use_thinpool=true
+    fi
+
+    local want_v6=0
+    if host_has_ipv6; then
+        want_v6=1
     fi
 
     if incus network show "$INCUS_NETWORK" >/dev/null 2>&1; then
@@ -325,10 +491,20 @@ ensure_incus_resources() {
         v6=$(incus_kv network "$INCUS_NETWORK" ipv6.address)
         [ "$addr" = "$EXPECTED_IPV4" ] || die "网桥 ${INCUS_NETWORK} 已存在但 ipv4.address=${addr}，期望 ${EXPECTED_IPV4}，拒绝修改"
         [ "$nat" = "true" ] || die "网桥 ${INCUS_NETWORK} 已存在但 ipv4.nat=${nat}，拒绝修改"
-        [ "$v6" = "none" ] || die "网桥 ${INCUS_NETWORK} 已存在但 ipv6.address=${v6}，拒绝修改"
-        log "网桥 ${INCUS_NETWORK} 已存在，不修改"
+        if [ "$want_v6" = "1" ] && { [ -z "$v6" ] || [ "$v6" = "none" ]; }; then
+            incus network set "$INCUS_NETWORK" ipv6.address=auto ipv6.nat=true
+            log "网桥 ${INCUS_NETWORK} 已接入 IPv6"
+        else
+            log "网桥 ${INCUS_NETWORK} 已存在，不修改"
+        fi
     else
-        incus network create "$INCUS_NETWORK" ipv4.address="$EXPECTED_IPV4" ipv4.nat=true ipv6.address=none
+        if [ "$want_v6" = "1" ]; then
+            incus network create "$INCUS_NETWORK" ipv4.address="$EXPECTED_IPV4" ipv4.nat=true ipv6.address=auto ipv6.nat=true
+            log "已创建网桥 ${INCUS_NETWORK}（IPv4 NAT + IPv6）"
+        else
+            incus network create "$INCUS_NETWORK" ipv4.address="$EXPECTED_IPV4" ipv4.nat=true ipv6.address=none
+            log "已创建网桥 ${INCUS_NETWORK}（IPv4 NAT，无 IPv6）"
+        fi
     fi
 
     if incus project show "$INCUS_PROJECT" >/dev/null 2>&1; then
@@ -341,7 +517,21 @@ ensure_incus_resources() {
 setup_cgroup() {
     mkdir -p /sys/fs/cgroup/particeps-guests || true
     echo '+cpu' > /sys/fs/cgroup/particeps-guests/cgroup.subtree_control 2>/dev/null || true
-    echo '150000 100000' > /sys/fs/cgroup/particeps-guests/cpu.max 2>/dev/null || true
+    local n quota
+    n=$(nproc 2>/dev/null || echo 1)
+    case "$n" in
+        ''|*[!0-9]*) n=1 ;;
+    esac
+    [ "$n" -ge 1 ] || n=1
+    quota=$(awk -v n="$n" 'BEGIN{
+        c=n*0.75
+        if (c<0.25) c=0.25
+        c=int(c*100+0.5)/100
+        q=int(c*100000+0.5)
+        if (q<1000) q=1000
+        print q
+    }')
+    echo "$quota 100000" > /sys/fs/cgroup/particeps-guests/cpu.max 2>/dev/null || true
 }
 
 install_packages() {
@@ -390,20 +580,30 @@ confirm_purge() {
     [ "$answer" = "PURGE" ] || die "已取消卸载"
 }
 
+instance_names() {
+    local proj="$1"
+    incus --project "$proj" list --format csv -c n 2>/dev/null | sed '/^$/d' || true
+}
+
 delete_particeps_instances() {
-    local names name failed=0
     command -v incus >/dev/null 2>&1 || return 0
     incus project show "$INCUS_PROJECT" >/dev/null 2>&1 || return 0
-    names=$(incus --project "$INCUS_PROJECT" list --format csv -c n 2>/dev/null || true)
-    log "将删除项目 ${INCUS_PROJECT} 中的实例: ${names:-<none>}"
-    while IFS= read -r name; do
-        [ -n "$name" ] || continue
-        if ! incus --project "$INCUS_PROJECT" delete "$name" --force >/dev/null 2>&1; then
-            log "删除实例失败: $name"
-            failed=1
-        fi
-    done <<< "$names"
-    [ "$failed" = "0" ] || die "实例删除未完成，已停止后续卸载"
+    local attempt names name remaining
+    names=$(instance_names "$INCUS_PROJECT")
+    log "将强制删除项目 ${INCUS_PROJECT} 中的实例: ${names:-<none>}"
+    for attempt in 1 2 3; do
+        names=$(instance_names "$INCUS_PROJECT")
+        [ -z "$names" ] && return 0
+        while IFS= read -r name; do
+            [ -n "$name" ] || continue
+            incus --project "$INCUS_PROJECT" stop --force "$name" >/dev/null 2>&1 || true
+            if ! incus --project "$INCUS_PROJECT" delete --force "$name" >/dev/null 2>&1; then
+                log "强制删除失败: $name（第 ${attempt} 次）"
+            fi
+        done <<< "$names"
+    done
+    remaining=$(instance_names "$INCUS_PROJECT")
+    [ -z "$remaining" ] || die "实例未能删干净，剩余: $remaining"
 }
 
 delete_particeps_resources() {
@@ -421,6 +621,67 @@ delete_particeps_resources() {
     if incus project show "$INCUS_PROJECT" >/dev/null 2>&1; then
         incus project delete "$INCUS_PROJECT" || die "删除项目 ${INCUS_PROJECT} 失败"
     fi
+}
+
+report_foreign_instances() {
+    command -v incus >/dev/null 2>&1 || return 1
+    local proj names name status found=0
+    while IFS= read -r proj; do
+        proj="${proj%%,*}"
+        proj="${proj//$'\r'/}"
+        [ -n "$proj" ] || continue
+        [ "$proj" = "$INCUS_PROJECT" ] && continue
+        names=$(incus --project "$proj" list --format csv -c n,s 2>/dev/null || true)
+        while IFS= read -r line; do
+            [ -n "$line" ] || continue
+            name="${line%%,*}"
+            status="${line#*,}"
+            [ -n "$name" ] || continue
+            if [ "$found" = "0" ]; then
+                echo "其它项目中仍有实例："
+                found=1
+            fi
+            echo "  项目=${proj} 实例=${name} 状态=${status}"
+        done <<< "$names"
+    done < <(incus project list --format csv -c n 2>/dev/null || true)
+    if [ "$found" = "0" ]; then
+        echo "其它项目没有实例。"
+        return 1
+    fi
+    echo "若删除 Incus，上述实例也会被清除。"
+    return 0
+}
+
+purge_incus() {
+    log "开始卸载 Incus"
+    systemctl stop incus incus.socket incus-user incus-user.socket 2>/dev/null || true
+    if command -v apt-get >/dev/null 2>&1; then
+        export DEBIAN_FRONTEND=noninteractive
+        apt-get purge -y incus incus-base incus-client incus-extra || true
+        apt-get autoremove -y || true
+        apt-get purge -y lxcfs || true
+    fi
+    umount /var/lib/lxcfs 2>/dev/null || true
+    rm -rf /var/lib/incus /var/log/incus /etc/incus /run/incus /var/cache/incus /var/lib/lxcfs
+    log "Incus 已卸载并清理数据目录"
+}
+
+prompt_remove_incus() {
+    command -v incus >/dev/null 2>&1 || { log "未找到 incus 命令，跳过"; return; }
+    report_foreign_instances || true
+    if [ "$NON_INTERACTIVE" = "1" ]; then
+        log "非交互模式：保留 Incus"
+        return
+    fi
+    local answer
+    while true; do
+        read -rp "是否删除 Incus 并清理干净？[y/N]: " answer || { log "保留 Incus"; return; }
+        case "$answer" in
+            Y|y) purge_incus; return ;;
+            N|n|"") log "保留 Incus"; return ;;
+            *) echo "无效，请重新输入" ;;
+        esac
+    done
 }
 
 do_uninstall() {
@@ -444,7 +705,8 @@ do_uninstall() {
         return
     fi
     rm -rf "$AGENT_CONFIG_DIR" "$AGENT_DATA_DIR"
-    log "已全部卸载 particeps 受管资源；Incus 软件包未卸载"
+    log "已全部卸载 particeps 受管资源"
+    prompt_remove_incus
 }
 
 do_update() {
@@ -472,9 +734,7 @@ do_fresh() {
     acquire_lock
     if [ "$SKIP_HOST" != "1" ]; then
         host_preflight
-        local avail
-        avail=$(df -BG / | awk 'NR==2 {gsub("G","",$4); print $4}')
-        [ "${avail:-0}" -ge 16 ] || die "根分区至少需要 16G 可用（当前 ${avail}G）"
+        prompt_pool_size
         install_packages
         ensure_incus_resources
         setup_cgroup
@@ -493,11 +753,12 @@ do_fresh() {
         log "已有配置 ${AGENT_CONFIG_FILE}，不覆盖"
     fi
     write_unit
+    init_admin
     if command -v systemctl >/dev/null 2>&1; then
         systemctl daemon-reload
         systemctl enable --now "$AGENT_SERVICE"
     fi
-    log "安装完成。首次管理员密码: ${AGENT_DATA_DIR}/admin-bootstrap.txt"
+    print_finish "$INSTALL_ADMIN_PASSWORD" "$INSTALL_ADMIN_EXISTING"
 }
 
 case "$ACTION" in

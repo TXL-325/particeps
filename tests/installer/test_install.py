@@ -33,6 +33,7 @@ class InstallerTests(unittest.TestCase):
             con.execute("CREATE TABLE preserved (id TEXT)")
             con.execute("INSERT INTO preserved VALUES ('guest-and-port')")
             con.commit()
+        (self.root / "incus-instances").write_text("particeps guest1 RUNNING\n", encoding="utf-8")
         self.config = self.etc / "config.yaml"
         self.config.write_text(
             f"listen: 127.0.0.1:8792\ndata_dir: {self.data.as_posix()}\nkeep: original\n",
@@ -103,13 +104,60 @@ fi
             "incus",
             r"""
 printf 'incus %s\n' "$*" >> "$TEST_CALLS"
-if test "$1" = --project && test "$3" = list; then
-  echo guest1
+instances="$TEST_ROOT/incus-instances"
+touch "$instances"
+if test "$1" = project && test "$2" = list; then
+  echo default
+  echo particeps
+  exit 0
+fi
+if test "$1" = --project; then
+  proj="$2"
+  cmd="$3"
+  if test "$cmd" = list; then
+    awk -v p="$proj" '$1==p { print $2 }' "$instances"
+    exit 0
+  fi
+  if test "$cmd" = stop; then
+    exit 0
+  fi
+  if test "$cmd" = delete; then
+    name=""
+    for arg in "$@"; do
+      case "$arg" in
+        --project|--force|delete|stop|list) ;;
+        *)
+          if test "$arg" != "$proj"; then
+            name="$arg"
+          fi
+          ;;
+      esac
+    done
+    if test -n "$name"; then
+      awk -v p="$proj" -v n="$name" '$1!=p || $2!=n { print }' "$instances" > "$instances.tmp"
+      mv "$instances.tmp" "$instances"
+    fi
+    exit 0
+  fi
   exit 0
 fi
 exit 0
 """,
         )
+        self.tool(
+            "ip",
+            r"""
+printf 'ip %s\n' "$*" >> "$TEST_CALLS"
+if test "$1" = -4; then
+  echo '2: ens33    inet 192.168.143.145/24 brd 192.168.143.255 scope global ens33'
+  echo '3: docker0    inet 172.17.0.1/16 brd 172.17.255.255 scope global docker0'
+  echo '4: particepsbr0    inet 10.80.0.1/24 brd 10.80.0.255 scope global particepsbr0'
+  exit 0
+fi
+exit 0
+""",
+        )
+        self.tool("apt-get", r"""printf 'apt-get %s\n' "$*" >> "$TEST_CALLS"; exit 0""")
         self.env["TEST_ROOT"] = str(self.root)
         self.env["TEST_CALLS"] = str(self.calls)
 
@@ -198,6 +246,8 @@ exit 0
     def test_keep_instances_skips_incus_delete(self):
         _, calls = self.run_script("--uninstall", "--keep-instances", "-y")
         self.assertNotIn("incus --project particeps delete", calls)
+        self.assertNotIn("incus --project particeps stop", calls)
+        self.assertNotIn("apt-get purge", calls)
         self.assertTrue(self.config.exists())
         self.assertTrue(self.db.exists())
         self.assertFalse((self.bin / "particeps-agent").exists())
@@ -210,10 +260,30 @@ exit 0
 
     def test_full_uninstall_with_purge(self):
         _, calls = self.run_script("--uninstall", "-y", "--confirm", "PURGE")
-        self.assertIn("incus --project particeps delete", calls)
+        self.assertIn("incus --project particeps stop --force guest1", calls)
+        self.assertIn("incus --project particeps delete --force guest1", calls)
+        self.assertNotIn("apt-get purge", calls)
         self.assertFalse(self.config.exists())
         self.assertFalse(self.data.exists())
         self.assertFalse(self.bin.exists())
+        leftover = (self.root / "incus-instances").read_text(encoding="utf-8")
+        self.assertNotIn("guest1", leftover)
+
+    def test_fresh_install_shows_panel_once(self):
+        (self.bin / "particeps-agent").unlink()
+        self.config.unlink()
+        (self.unit_dir / "particeps-agent.service").unlink()
+        output, _ = self.run_script("-y")
+        config_text = self.config.read_text(encoding="utf-8")
+        self.assertIn("listen: 0.0.0.0:8792", config_text)
+        self.assertIn("session_cookie_secure: false", config_text)
+        self.assertIn("安装完成", output)
+        self.assertIn("http://192.168.143.145:8792", output)
+        self.assertNotIn("http://172.17.0.1:8792", output)
+        self.assertNotIn("http://10.80.0.1:8792", output)
+        self.assertIn("初始密码:", output)
+        self.assertNotIn("admin-bootstrap.txt", output)
+        self.assertFalse((self.data / "admin-bootstrap.txt").exists())
 
 if __name__ == "__main__":
     unittest.main()

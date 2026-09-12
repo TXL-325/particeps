@@ -1,7 +1,7 @@
-listen: 127.0.0.1:8792
-# Keep true for HTTPS, including TLS terminated by a reverse proxy.
-# Set false only for an explicitly isolated, plain-HTTP development network.
-session_cookie_secure: true
+listen: 0.0.0.0:8792
+# false for the default plain-HTTP listen. Set true when serving HTTPS
+# (including TLS terminated by a reverse proxy).
+session_cookie_secure: false
 data_dir: /var/lib/particeps
 incus_socket: /var/lib/incus/unix.socket
 incus_project: particeps
