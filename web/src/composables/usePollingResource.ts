@@ -74,5 +74,14 @@ export function usePollingResource<T>(
     if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', visibilityChanged)
   })
 
-  return { data, error, loading, refresh }
+  function accept(next: T) {
+    cancel()
+    data.value = next
+    error.value = ''
+    if (active && intervalMs > 0 && (typeof document === 'undefined' || !document.hidden) && shouldPoll(next)) {
+      timer = window.setTimeout(() => void refresh(), intervalMs)
+    }
+  }
+
+  return { data, error, loading, refresh, invalidate: cancel, accept }
 }

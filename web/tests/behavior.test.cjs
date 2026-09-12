@@ -143,3 +143,133 @@ test('host CPU stays visible when the uplink sample is missing', async () => {
   assert.ok(!html.includes('NaN'))
   assert.ok(!html.includes('0 ↓'))
 })
+
+const portFixture = id => ({ id, name: `Guest ${id}`, networkStatus: 'ready', ports: [
+  { number: 20000, proto: 'tcp', listenIp: '192.0.2.1', target: 22 },
+  { number: 20000, proto: 'udp', listenIp: '192.0.2.1', target: 20000 },
+] })
+
+test('failed port addition reloads pending ownership instead of showing success', async () => {
+  const saved = portFixture('A')
+  const view = fixture('src/views/InstanceDetailView.vue', {
+    async instance() { return { ...saved, ports: [...saved.ports] } },
+    async addPort(id, number) {
+      assert.equal(id, 'A')
+      assert.equal(number, 20001)
+      saved.networkStatus = 'pending'
+      saved.ports.push({ number, proto: 'tcp', listenIp: '192.0.2.1', target: number })
+      throw new Error('forward write rejected')
+    },
+  })
+  await tick()
+  nodes(view.root, node => node.props['aria-label'] === '追加端口号码')[0].props.onInput({ target: { value: '20001' } })
+  nodes(view.root, node => node.tag === 'form')[0].props.onSubmit({ preventDefault() {} })
+  await tick()
+  assert.ok(text(view.root).includes('forward write rejected'))
+  assert.ok(text(view.root).includes('转发尚未确认生效'))
+  assert.ok(text(view.root).includes('20001'))
+  assert.ok(!text(view.root).includes('（SSH）'))
+  view.app.unmount()
+})
+
+test('port edit sends the selected number and protocol and preserves its number', async () => {
+  const saved = portFixture('A')
+  let changed
+  const view = fixture('src/views/InstanceDetailView.vue', {
+    async instance() { return { ...saved, ports: saved.ports.map(p => ({ ...p })) } },
+    async editPort(id, number, proto, target) {
+      changed = { id, number, proto, target }
+      saved.ports[0].target = target
+    },
+  })
+  await tick()
+  nodes(view.root, node => node.tag === 'button' && node.text === '编辑目标')[0].props.onClick()
+  await tick()
+  nodes(view.root, node => node.props['aria-label'] === '20000 tcp 目标端口')[0].props.onInput({ target: { value: '2222' } })
+  nodes(view.root, node => node.tag === 'button' && node.text === '保存目标')[0].props.onClick()
+  await tick()
+  assert.deepEqual(changed, { id: 'A', number: 20000, proto: 'tcp', target: 2222 })
+  assert.ok(text(view.root).includes('2222'))
+  assert.ok(text(view.root).includes('20000'))
+  assert.ok(!text(view.root).includes('（SSH）'))
+  view.app.unmount()
+})
+
+test('late port mutation error cannot affect the next instance', async () => {
+  let rejectEdit
+  const view = fixture('src/views/InstanceDetailView.vue', {
+    async instance(id) { return portFixture(id) },
+    editPort() { return new Promise((resolve, reject) => { rejectEdit = reject }) },
+  })
+  await tick()
+  nodes(view.root, node => node.tag === 'button' && node.text === '编辑目标')[0].props.onClick()
+  await tick()
+  nodes(view.root, node => node.props['aria-label'] === '20000 tcp 目标端口')[0].props.onInput({ target: { value: '2222' } })
+  nodes(view.root, node => node.tag === 'button' && node.text === '保存目标')[0].props.onClick()
+  await tick()
+  view.selected.value = 'B'
+  await tick()
+  rejectEdit(new Error('old instance error'))
+  await tick()
+  assert.ok(text(view.root).includes('Guest B'))
+  assert.ok(!text(view.root).includes('old instance error'))
+  assert.equal(nodes(view.root, node => node.tag === 'fieldset' && node.props.class === 'actions')[0].props.disabled, false)
+  view.app.unmount()
+})
+
+test('unknown and cleanup states cannot offer blind reapplication', async () => {
+  const component = loader()('src/components/instance/PortForwardStatus.vue').default
+  for (const status of ['needs-reconciliation', 'cleanup-pending']) {
+    const html = await renderToString(vue.createSSRApp(component, { status, busy: false }))
+    assert.ok(html.includes('保留'))
+    assert.ok(!html.includes('<button'))
+  }
+})
+
+test('port mutation remains busy and unverified until fresh details arrive', async () => {
+  let reads = 0, finishRead
+  const saved = portFixture('A')
+  const view = fixture('src/views/InstanceDetailView.vue', {
+    instance() {
+      if (++reads === 1) return Promise.resolve(portFixture('A'))
+      return new Promise(resolve => { finishRead = resolve })
+    },
+    async addPort() { saved.networkStatus = 'pending'; throw new Error('apply failed') },
+  })
+  await tick()
+  nodes(view.root, node => node.tag === 'form')[0].props.onSubmit({ preventDefault() {} })
+  await tick()
+  assert.ok(!text(view.root).includes('端口规则已应用'))
+  assert.ok(!text(view.root).includes('（SSH）'))
+  assert.equal(nodes(view.root, node => node.tag === 'fieldset' && node.props.class === 'actions')[0].props.disabled, true)
+  finishRead(saved)
+  await tick()
+  assert.ok(text(view.root).includes('转发尚未确认生效'))
+  assert.equal(nodes(view.root, node => node.tag === 'fieldset' && node.props.class === 'actions')[0].props.disabled, false)
+  view.app.unmount()
+})
+
+test('failed detail refresh never restores old ready or SSH claims', async () => {
+  let reads = 0, unavailable = true, mutations = 0
+  const saved = portFixture('A')
+  const view = fixture('src/views/InstanceDetailView.vue', {
+    async instance() {
+      if (++reads > 1 && unavailable) throw new Error('details unavailable')
+      return { ...saved, ports: saved.ports.map(p => ({ ...p })) }
+    },
+    async addPort() { mutations++; saved.networkStatus = 'pending'; throw new Error('apply failed') },
+  })
+  await tick()
+  nodes(view.root, node => node.tag === 'form')[0].props.onSubmit({ preventDefault() {} })
+  await tick()
+  assert.ok(text(view.root).includes('最新端口状态尚未确认'))
+  assert.ok(!text(view.root).includes('端口规则已应用'))
+  assert.ok(!text(view.root).includes('（SSH）'))
+  assert.ok(nodes(view.root, node => node.tag === 'button' && node.text === '编辑目标').every(node => node.props.disabled))
+  unavailable = false
+  nodes(view.root, node => node.tag === 'button' && node.text === '刷新端口状态')[0].props.onClick()
+  await tick()
+  assert.equal(mutations, 1)
+  assert.ok(text(view.root).includes('转发尚未确认生效'))
+  view.app.unmount()
+})

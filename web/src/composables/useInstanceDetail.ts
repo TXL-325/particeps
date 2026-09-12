@@ -22,5 +22,13 @@ export function useInstanceDetail(id: () => string) {
   }, () => [], 2000)
   const metrics = usePollingResource<Metric[]>(id, async (key, signal) => (await api.instSeries(key, signal)).series ?? [], () => [], 5000)
   const error = computed(() => instance.error.value || processes.error.value || metrics.error.value)
-  return { inst: instance.data, procs: processes.data, series: metrics.data, error, load: instance.refresh, loadProcs: processes.refresh }
+  function invalidatePorts() {
+    instance.invalidate()
+    if (instance.data.value) instance.data.value = { ...instance.data.value, networkStatus: 'unverified', networkError: '' }
+  }
+  function acceptInstance(next: Instance) {
+    if (next.id !== id() && next.name !== id()) return
+    instance.accept(next)
+  }
+  return { inst: instance.data, procs: processes.data, series: metrics.data, error, load: instance.refresh, loadProcs: processes.refresh, invalidatePorts, acceptInstance }
 }

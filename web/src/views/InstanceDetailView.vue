@@ -5,15 +5,17 @@ import { api } from '../api'
 import { useInstanceDetail } from '../composables/useInstanceDetail'
 import ProcessTable from '../components/instance/ProcessTable.vue'
 import ResourceCharts from '../components/charts/ResourceCharts.vue'
+import PortAllocationPanel from '../components/instance/PortAllocationPanel.vue'
 
 const props = defineProps<{ id: string }>()
 const router = useRouter()
-const { inst, procs, series, error, load, loadProcs } = useInstanceDetail(() => props.id)
+const { inst, procs, series, error, load, loadProcs, invalidatePorts, acceptInstance } = useInstanceDetail(() => props.id)
 const actionError = shallowRef('')
 const secret = shallowRef('')
 const busy = shallowRef(false)
+const portBusy = shallowRef(false)
 let actionVersion = 0
-watch(() => props.id, () => { actionVersion++; secret.value = ''; actionError.value = ''; busy.value = false }, { flush: 'sync' })
+watch(() => props.id, () => { actionVersion++; secret.value = ''; actionError.value = ''; busy.value = false; portBusy.value = false }, { flush: 'sync' })
 onScopeDispose(() => { actionVersion++; secret.value = '' })
 
 async function act(op: string) {
@@ -21,13 +23,17 @@ async function act(op: string) {
   const version = ++actionVersion
   busy.value = true
   actionError.value = ''
+  invalidatePorts()
   try {
     await api.action(id, op)
     if (version !== actionVersion || props.id !== id) return
     if (op === 'delete') await router.push('/instances')
     else await load()
   } catch (cause) {
-    if (version === actionVersion) actionError.value = cause instanceof Error ? cause.message : '操作失败'
+    if (version === actionVersion) {
+      actionError.value = cause instanceof Error ? cause.message : '操作失败'
+      await load()
+    }
   } finally {
     if (version === actionVersion) busy.value = false
   }
@@ -56,7 +62,7 @@ function remove() {
   <div v-if="inst">
     <header class="head">
       <h1>{{ inst.name }}</h1>
-      <fieldset class="actions" :disabled="busy">
+      <fieldset class="actions" :disabled="busy || portBusy">
         <button type="button" @click="act('start')">启动</button>
         <button type="button" @click="act('stop')">停止</button>
         <button type="button" @click="act('force-stop')">强制停止</button>
@@ -72,17 +78,8 @@ function remove() {
     <h2>资源</h2>
     <ResourceCharts :series="series" />
     <h2>端口</h2>
-    <table>
-      <thead><tr><th>号码</th><th>协议</th><th>监听</th><th>目标</th></tr></thead>
-      <tbody>
-        <tr v-for="p in inst.ports || []" :key="p.number + p.proto">
-          <td class="num">{{ p.number }}</td>
-          <td>{{ p.proto }}</td>
-          <td class="num">{{ p.listenIp }}</td>
-          <td class="num">{{ p.target }}</td>
-        </tr>
-      </tbody>
-    </table>
+    <PortAllocationPanel :key="inst.id" :instance-id="inst.id" :ports="inst.ports || []" :status="inst.networkStatus"
+      :network-error="inst.networkError" :disabled="busy" @invalidate="invalidatePorts" @refreshed="acceptInstance" @busy="portBusy = $event" />
     <h2>内部进程</h2>
     <ProcessTable :processes="procs" @refresh="loadProcs" />
   </div>
