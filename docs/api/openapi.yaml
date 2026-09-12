@@ -1,165 +1,1823 @@
-openapi: 3.0.3
+# Generated structure is validated against registered routes by the API tests.
+openapi: "3.0.3"
 info:
-  title: particeps Agent API
-  version: v1
+  title: "particeps Agent API"
+  version: "v1"
+  description: "对应当前 Agent 注册的全部 HTTP 操作。会话管理操作须通过同源检查；代理应保留原 Host。默认启用 Secure Cookie，实验明文 HTTP 需显式设置 session_cookie_secure: false。所有 JSON 响应禁止缓存。"
 servers:
-  - url: /api/v1
+  -
+    url: "/api/v1"
+tags:
+  -
+    name: "认证"
+    description: "管理员会话与 API Token"
+  -
+    name: "管理"
+    description: "受管实例、网络、资源与任务"
+security:
+  -
+    sessionCookie: []
+  -
+    bearerToken: []
 paths:
-  /session:
+  "/session":
     post:
-      summary: 管理员登录
-      requestBody:
-        content:
-          application/json:
-            example: { password: "..." }
-      responses:
-        "200": { description: 设置会话 cookie }
-  /host:
-    get:
-      summary: 母机概览与合计 CPU 硬上限
-      responses:
-        "200": { description: host snapshot }
-  /instances:
-    get:
-      summary: 列出小鸡
-    post:
-      summary: 批量创建（Idempotency-Key）
-  /instances/{id}:
-    get:
-      summary: 小鸡详情
-  /instances/{id}/ports:
-    parameters:
-      - $ref: '#/components/parameters/InstanceID'
-    post:
-      summary: 为小鸡追加一个 TCP/UDP 号码
-      description: 仅管理会话或管理 Token 可调用；Cookie 写请求须通过同源检查。号码为 0 或省略时自动选择，否则须在配置池内且没有冲突。两种协议一起分配。409 不代表回滚：分配可能已持久保存，必须重新读取实例的 networkStatus。
-      security: [{ sessionCookie: [] }, { bearerToken: [] }]
+      operationId: "login"
+      summary: "管理员登录"
+      tags:
+        - "认证"
+      description: "每个连接来源每分钟最多 5 次尝试，全局每分钟最多 30 次，最多同时运行 2 次密码校验。忽略外部提供的来源地址头；反向代理部署还可在代理层按客户端限速。"
+      security: []
       requestBody:
         required: true
         content:
-          application/json:
+          "application/json":
             schema:
-              type: object
-              additionalProperties: false
-              properties:
-                number: { type: integer, minimum: 0, maximum: 65535, default: 0 }
-      responses:
-        "200": { $ref: '#/components/responses/PortInstance' }
-        "400": { description: JSON 无效或包含未知字段 }
-        "401": { description: 未认证 }
-        "403": { description: 只读 Token 或来源校验失败 }
-        "409": { $ref: '#/components/responses/PortConflict' }
-  /instances/{id}/ports/{number}/{proto}:
-    parameters:
-      - $ref: '#/components/parameters/InstanceID'
-      - { name: number, in: path, required: true, schema: { type: integer, minimum: 1, maximum: 65535 } }
-      - { name: proto, in: path, required: true, schema: { type: string, enum: [tcp, udp] } }
-    patch:
-      summary: 修改已有协议规则的目标端口
-      description: 保留号码和实例归属。修改后清理旧目标的 NAT 连接，不影响其他实例；停止状态只保存目标。失败可能已保存新目标，须重新读取状态，不能把旧界面缓存当成已应用结果。
-      security: [{ sessionCookie: [] }, { bearerToken: [] }]
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              additionalProperties: false
-              required: [target]
-              properties:
-                target: { type: integer, minimum: 1, maximum: 65535 }
-      responses:
-        "200": { $ref: '#/components/responses/PortInstance' }
-        "400": { description: 路径号码或 JSON 无效 }
-        "401": { description: 未认证 }
-        "403": { description: 只读 Token 或来源校验失败 }
-        "409": { $ref: '#/components/responses/PortConflict' }
-  /instances/{id}/ports/sync:
-    parameters:
-      - $ref: '#/components/parameters/InstanceID'
-    post:
-      summary: 核对并重新应用已保存的端口分配
-      description: 仅处理结果已知的待应用配置。不重发仍可能执行的转发或电源操作；needs-reconciliation 状态保留资源，等待人工核对。该接口不会证明公网可达。
-      security: [{ sessionCookie: [] }, { bearerToken: [] }]
-      responses:
-        "200": { $ref: '#/components/responses/PortInstance' }
-        "401": { description: 未认证 }
-        "403": { description: 只读 Token 或来源校验失败 }
-        "409": { $ref: '#/components/responses/PortConflict' }
-  /tasks/{id}:
-    get:
-      summary: 任务进度（不返回密码）
-      parameters:
-        - { name: id, in: path, required: true, schema: { type: string } }
+              "$ref": "#/components/schemas/LoginRequest"
       responses:
         "200":
-          description: 逐项进度；credentialAvailable 表示存在尚未领取且未过期的初始凭据。
-        "401": { description: 未认证 }
-        "404": { description: 任务不存在 }
-  /tasks/{id}/credentials:
-    post:
-      summary: 领取一次性初始凭据
-      description: 仅管理会话或管理 Token 可调用。凭据加密暂存 15 分钟，成功领取时清除。返回 Cache-Control no-store；重复领取或过期返回空数组。丢失可通过密码重置恢复。
-      parameters:
-        - { name: id, in: path, required: true, schema: { type: string } }
-      responses:
-        "200":
-          description: 本次领取的凭据
-          content:
-            application/json:
+          description: "成功。"
+          headers:
+            Set-Cookie:
+              description: "particeps_session；HttpOnly、SameSite=Strict；默认 Secure，12 小时后到期。"
               schema:
-                type: object
-                required: [credentials]
-                properties:
-                  credentials:
-                    type: array
-                    items:
-                      type: object
-                      required: [name, instanceId, password]
-                      properties:
-                        name: { type: string }
-                        instanceId: { type: string }
-                        password: { type: string }
-        "401": { description: 未认证 }
-        "403": { description: 只读 Token 或来源校验失败 }
-        "409": { description: 任务或凭据状态冲突，需要核对或重置密码 }
+                type: "string"
+            Cache-Control:
+              schema:
+                type: "string"
+                enum:
+                  - "no-store"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/OK"
+        "400":
+          "$ref": "#/components/responses/Error400"
+        "401":
+          "$ref": "#/components/responses/Error401"
+        "403":
+          "$ref": "#/components/responses/Error403"
+        "429":
+          "$ref": "#/components/responses/Error429"
+        "500":
+          "$ref": "#/components/responses/Error500"
+    delete:
+      operationId: "logout"
+      summary: "撤销当前浏览器会话"
+      tags:
+        - "认证"
+      description: "通过来源检查后撤销 Cookie 指定的会话。没有会话也可退出；撤销失败返回 500，并保留 Cookie 供重试。此接口不撤销 Bearer Token。"
+      security: []
+      responses:
+        "200":
+          description: "成功。"
+          headers:
+            Cache-Control:
+              schema:
+                type: "string"
+                enum:
+                  - "no-store"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/OK"
+        "403":
+          "$ref": "#/components/responses/Error403"
+        "500":
+          "$ref": "#/components/responses/Error500"
+  "/meta":
+    get:
+      operationId: "getMeta"
+      summary: "产品与 API 版本"
+      tags:
+        - "管理"
+      x-permissions:
+        - "admin"
+        - "read"
+        - "manage"
+      responses:
+        "200":
+          description: "成功。"
+          headers:
+            Cache-Control:
+              schema:
+                type: "string"
+                enum:
+                  - "no-store"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Meta"
+        "401":
+          "$ref": "#/components/responses/Error401"
+        "403":
+          "$ref": "#/components/responses/Error403"
+  "/host":
+    get:
+      operationId: "getHost"
+      summary: "母机资源概览"
+      tags:
+        - "管理"
+      x-permissions:
+        - "admin"
+        - "read"
+        - "manage"
+      responses:
+        "200":
+          description: "成功。"
+          headers:
+            Cache-Control:
+              schema:
+                type: "string"
+                enum:
+                  - "no-store"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Host"
+        "401":
+          "$ref": "#/components/responses/Error401"
+        "403":
+          "$ref": "#/components/responses/Error403"
+  "/host/network":
+    get:
+      operationId: "detectNetwork"
+      summary: "探测母机地址候选"
+      tags:
+        - "管理"
+      x-permissions:
+        - "admin"
+        - "read"
+        - "manage"
+      responses:
+        "200":
+          description: "成功。"
+          headers:
+            Cache-Control:
+              schema:
+                type: "string"
+                enum:
+                  - "no-store"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Network"
+        "401":
+          "$ref": "#/components/responses/Error401"
+        "403":
+          "$ref": "#/components/responses/Error403"
+  "/settings/network-pool":
+    get:
+      operationId: "getNetworkPool"
+      summary: "读取地址池设置"
+      tags:
+        - "管理"
+      x-permissions:
+        - "admin"
+        - "read"
+        - "manage"
+      responses:
+        "200":
+          description: "成功。"
+          headers:
+            Cache-Control:
+              schema:
+                type: "string"
+                enum:
+                  - "no-store"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Pool"
+        "401":
+          "$ref": "#/components/responses/Error401"
+        "403":
+          "$ref": "#/components/responses/Error403"
+    put:
+      operationId: "saveNetworkPool"
+      summary: "保存地址池设置"
+      tags:
+        - "管理"
+      description: "当前保存设置；不承诺完成地址归属校验、指定出口、独立 IPv4、IPv6/NAT66 或外部可达性验证。"
+      x-permissions:
+        - "admin"
+        - "manage"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              "$ref": "#/components/schemas/Pool"
+      responses:
+        "200":
+          description: "成功。"
+          headers:
+            Cache-Control:
+              schema:
+                type: "string"
+                enum:
+                  - "no-store"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Pool"
+        "400":
+          "$ref": "#/components/responses/Error400"
+        "401":
+          "$ref": "#/components/responses/Error401"
+        "403":
+          "$ref": "#/components/responses/Error403"
+  "/settings/cpu-cap":
+    put:
+      operationId: "setCPUCap"
+      summary: "修改小鸡合计 CPU 硬上限"
+      tags:
+        - "管理"
+      description: "不能低于最大单台额度；失败时需查看回读状态，不能将请求受理视为内核设置成功。"
+      x-permissions:
+        - "admin"
+        - "manage"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              "$ref": "#/components/schemas/CapRequest"
+      responses:
+        "200":
+          description: "成功。"
+          headers:
+            Cache-Control:
+              schema:
+                type: "string"
+                enum:
+                  - "no-store"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/CapResult"
+        "400":
+          "$ref": "#/components/responses/Error400"
+        "401":
+          "$ref": "#/components/responses/Error401"
+        "403":
+          "$ref": "#/components/responses/Error403"
+  "/instances":
+    get:
+      operationId: "listInstances"
+      summary: "列出受管实例"
+      tags:
+        - "管理"
+      x-permissions:
+        - "admin"
+        - "read"
+        - "manage"
+      responses:
+        "200":
+          description: "成功。"
+          headers:
+            Cache-Control:
+              schema:
+                type: "string"
+                enum:
+                  - "no-store"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Instances"
+        "401":
+          "$ref": "#/components/responses/Error401"
+        "403":
+          "$ref": "#/components/responses/Error403"
+        "500":
+          "$ref": "#/components/responses/Error500"
+    post:
+      operationId: "createInstances"
+      summary: "提交批量创建任务"
+      tags:
+        - "管理"
+      description: "202 只表示任务受理，须查询逐实例结果。密码不出现在普通任务查询中。"
+      x-permissions:
+        - "admin"
+        - "manage"
+      parameters:
+        -
+          name: "Idempotency-Key"
+          in: "header"
+          schema:
+            type: "string"
+          description: "相同键与相同请求返回原任务；相同键与不同请求拒绝。"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              "$ref": "#/components/schemas/CreateRequest"
+      responses:
+        "202":
+          description: "成功。"
+          headers:
+            Cache-Control:
+              schema:
+                type: "string"
+                enum:
+                  - "no-store"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Task"
+        "400":
+          "$ref": "#/components/responses/Error400"
+        "401":
+          "$ref": "#/components/responses/Error401"
+        "403":
+          "$ref": "#/components/responses/Error403"
+        "409":
+          "$ref": "#/components/responses/Error409"
+  "/instances/{id}":
+    parameters:
+      -
+        name: "id"
+        in: "path"
+        required: true
+        schema:
+          type: "string"
+        description: "管理 ID 或实例名称；其他路径使用对应对象 ID。"
+    get:
+      operationId: "getInstance"
+      summary: "查询实例与端口状态"
+      tags:
+        - "管理"
+      x-permissions:
+        - "admin"
+        - "read"
+        - "manage"
+      responses:
+        "200":
+          description: "成功。"
+          headers:
+            Cache-Control:
+              schema:
+                type: "string"
+                enum:
+                  - "no-store"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Instance"
+        "401":
+          "$ref": "#/components/responses/Error401"
+        "403":
+          "$ref": "#/components/responses/Error403"
+        "404":
+          "$ref": "#/components/responses/Error404"
+  "/instances/{id}/start":
+    parameters:
+      -
+        name: "id"
+        in: "path"
+        required: true
+        schema:
+          type: "string"
+        description: "管理 ID 或实例名称；其他路径使用对应对象 ID。"
+    post:
+      operationId: "startInstance"
+      summary: "启动实例"
+      tags:
+        - "管理"
+      description: "同实例的电源、删除和密码操作串行。进行中的创建会拒绝操作；未知后端结果保留待核对状态。"
+      x-permissions:
+        - "admin"
+        - "manage"
+      responses:
+        "200":
+          description: "成功。"
+          headers:
+            Cache-Control:
+              schema:
+                type: "string"
+                enum:
+                  - "no-store"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/OK"
+        "400":
+          "$ref": "#/components/responses/Error400"
+        "401":
+          "$ref": "#/components/responses/Error401"
+        "403":
+          "$ref": "#/components/responses/Error403"
+  "/instances/{id}/stop":
+    parameters:
+      -
+        name: "id"
+        in: "path"
+        required: true
+        schema:
+          type: "string"
+        description: "管理 ID 或实例名称；其他路径使用对应对象 ID。"
+    post:
+      operationId: "stopInstance"
+      summary: "优雅停止实例"
+      tags:
+        - "管理"
+      description: "同实例的电源、删除和密码操作串行。进行中的创建会拒绝操作；未知后端结果保留待核对状态。"
+      x-permissions:
+        - "admin"
+        - "manage"
+      responses:
+        "200":
+          description: "成功。"
+          headers:
+            Cache-Control:
+              schema:
+                type: "string"
+                enum:
+                  - "no-store"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/OK"
+        "400":
+          "$ref": "#/components/responses/Error400"
+        "401":
+          "$ref": "#/components/responses/Error401"
+        "403":
+          "$ref": "#/components/responses/Error403"
+  "/instances/{id}/force-stop":
+    parameters:
+      -
+        name: "id"
+        in: "path"
+        required: true
+        schema:
+          type: "string"
+        description: "管理 ID 或实例名称；其他路径使用对应对象 ID。"
+    post:
+      operationId: "forcestopInstance"
+      summary: "强制停止实例"
+      tags:
+        - "管理"
+      description: "同实例的电源、删除和密码操作串行。进行中的创建会拒绝操作；未知后端结果保留待核对状态。"
+      x-permissions:
+        - "admin"
+        - "manage"
+      responses:
+        "200":
+          description: "成功。"
+          headers:
+            Cache-Control:
+              schema:
+                type: "string"
+                enum:
+                  - "no-store"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/OK"
+        "400":
+          "$ref": "#/components/responses/Error400"
+        "401":
+          "$ref": "#/components/responses/Error401"
+        "403":
+          "$ref": "#/components/responses/Error403"
+  "/instances/{id}/restart":
+    parameters:
+      -
+        name: "id"
+        in: "path"
+        required: true
+        schema:
+          type: "string"
+        description: "管理 ID 或实例名称；其他路径使用对应对象 ID。"
+    post:
+      operationId: "restartInstance"
+      summary: "重启实例"
+      tags:
+        - "管理"
+      description: "同实例的电源、删除和密码操作串行。进行中的创建会拒绝操作；未知后端结果保留待核对状态。"
+      x-permissions:
+        - "admin"
+        - "manage"
+      responses:
+        "200":
+          description: "成功。"
+          headers:
+            Cache-Control:
+              schema:
+                type: "string"
+                enum:
+                  - "no-store"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/OK"
+        "400":
+          "$ref": "#/components/responses/Error400"
+        "401":
+          "$ref": "#/components/responses/Error401"
+        "403":
+          "$ref": "#/components/responses/Error403"
+  "/instances/{id}/delete":
+    parameters:
+      -
+        name: "id"
+        in: "path"
+        required: true
+        schema:
+          type: "string"
+        description: "管理 ID 或实例名称；其他路径使用对应对象 ID。"
+    post:
+      operationId: "deleteInstance"
+      summary: "删除实例并清理所属资源"
+      tags:
+        - "管理"
+      description: "清理失败保留占用。成功删除同时使该实例尚未领取的初始凭据失效。"
+      x-permissions:
+        - "admin"
+        - "manage"
+      responses:
+        "200":
+          description: "成功。"
+          headers:
+            Cache-Control:
+              schema:
+                type: "string"
+                enum:
+                  - "no-store"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/OK"
+        "400":
+          "$ref": "#/components/responses/Error400"
+        "401":
+          "$ref": "#/components/responses/Error401"
+        "403":
+          "$ref": "#/components/responses/Error403"
+  "/instances/{id}/rebuild":
+    parameters:
+      -
+        name: "id"
+        in: "path"
+        required: true
+        schema:
+          type: "string"
+        description: "管理 ID 或实例名称；其他路径使用对应对象 ID。"
+    post:
+      operationId: "rebuildInstance"
+      summary: "重装接口占位"
+      tags:
+        - "管理"
+      description: "当前未实现；返回 400，不停止实例、不更换系统盘。"
+      x-permissions:
+        - "admin"
+        - "manage"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              "$ref": "#/components/schemas/RebuildRequest"
+      responses:
+        "400":
+          "$ref": "#/components/responses/Error400"
+        "401":
+          "$ref": "#/components/responses/Error401"
+        "403":
+          "$ref": "#/components/responses/Error403"
+  "/instances/{id}/resources":
+    parameters:
+      -
+        name: "id"
+        in: "path"
+        required: true
+        schema:
+          type: "string"
+        description: "管理 ID 或实例名称；其他路径使用对应对象 ID。"
+    patch:
+      operationId: "patchResources"
+      summary: "修改资源配置"
+      tags:
+        - "管理"
+      description: "系统盘只允许增大。结果不明时保留待核对状态，须重新读取 resourceStatus。"
+      x-permissions:
+        - "admin"
+        - "manage"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              "$ref": "#/components/schemas/ResourceRequest"
+      responses:
+        "200":
+          description: "成功。"
+          headers:
+            Cache-Control:
+              schema:
+                type: "string"
+                enum:
+                  - "no-store"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/OK"
+        "400":
+          "$ref": "#/components/responses/Error400"
+        "401":
+          "$ref": "#/components/responses/Error401"
+        "403":
+          "$ref": "#/components/responses/Error403"
+  "/instances/{id}/ports":
+    parameters:
+      -
+        name: "id"
+        in: "path"
+        required: true
+        schema:
+          type: "string"
+        description: "管理 ID 或实例名称；其他路径使用对应对象 ID。"
+    post:
+      operationId: "addPort"
+      summary: "追加一对 TCP/UDP 号码"
+      tags:
+        - "管理"
+      description: "号码为 0 或省略时自动分配；两协议同归属。409 时可能已保存分配，须读取 networkStatus。"
+      x-permissions:
+        - "admin"
+        - "manage"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              "$ref": "#/components/schemas/PortAdd"
+      responses:
+        "200":
+          description: "成功。"
+          headers:
+            Cache-Control:
+              schema:
+                type: "string"
+                enum:
+                  - "no-store"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Instance"
+        "400":
+          "$ref": "#/components/responses/Error400"
+        "401":
+          "$ref": "#/components/responses/Error401"
+        "403":
+          "$ref": "#/components/responses/Error403"
+        "409":
+          "$ref": "#/components/responses/Error409"
+  "/instances/{id}/ports/{number}/{proto}":
+    parameters:
+      -
+        name: "id"
+        in: "path"
+        required: true
+        schema:
+          type: "string"
+        description: "管理 ID 或实例名称；其他路径使用对应对象 ID。"
+      -
+        name: "number"
+        in: "path"
+        required: true
+        schema:
+          type: "integer"
+          minimum: 1
+          maximum: 65535
+      -
+        name: "proto"
+        in: "path"
+        required: true
+        schema:
+          type: "string"
+          enum:
+            - "tcp"
+            - "udp"
+    patch:
+      operationId: "editPort"
+      summary: "修改协议规则的目标端口"
+      tags:
+        - "管理"
+      description: "保留号码归属并清理旧目标连接。失败可能已保存目标，须重新查询，不依赖旧页面缓存。"
+      x-permissions:
+        - "admin"
+        - "manage"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              "$ref": "#/components/schemas/PortEdit"
+      responses:
+        "200":
+          description: "成功。"
+          headers:
+            Cache-Control:
+              schema:
+                type: "string"
+                enum:
+                  - "no-store"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Instance"
+        "400":
+          "$ref": "#/components/responses/Error400"
+        "401":
+          "$ref": "#/components/responses/Error401"
+        "403":
+          "$ref": "#/components/responses/Error403"
+        "409":
+          "$ref": "#/components/responses/Error409"
+  "/instances/{id}/ports/sync":
+    parameters:
+      -
+        name: "id"
+        in: "path"
+        required: true
+        schema:
+          type: "string"
+        description: "管理 ID 或实例名称；其他路径使用对应对象 ID。"
+    post:
+      operationId: "syncPorts"
+      summary: "核对并应用已保存的端口规则"
+      tags:
+        - "管理"
+      description: "不重发结果不明的操作。needs-reconciliation 需要人工核对；此接口不证明公网可达。"
+      x-permissions:
+        - "admin"
+        - "manage"
+      responses:
+        "200":
+          description: "成功。"
+          headers:
+            Cache-Control:
+              schema:
+                type: "string"
+                enum:
+                  - "no-store"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Instance"
+        "401":
+          "$ref": "#/components/responses/Error401"
+        "403":
+          "$ref": "#/components/responses/Error403"
+        "409":
+          "$ref": "#/components/responses/Error409"
+  "/instances/{id}/password":
+    parameters:
+      -
+        name: "id"
+        in: "path"
+        required: true
+        schema:
+          type: "string"
+        description: "管理 ID 或实例名称；其他路径使用对应对象 ID。"
+    post:
+      operationId: "resetPassword"
+      summary: "重置运行中实例的密码"
+      tags:
+        - "管理"
+      description: "同一实例串行执行，密码经 stdin 送达并等待命令结果。派发前清除旧初始化凭据并记录操作。超时后先核对 operation 终态，未终结时阻止再次重置、启停和删除；引用缺失或丢失时需要人工核对。不再提供旧初始密码。"
+      x-permissions:
+        - "admin"
+        - "manage"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              "$ref": "#/components/schemas/PasswordRequest"
+      responses:
+        "200":
+          description: "成功。"
+          headers:
+            Cache-Control:
+              schema:
+                type: "string"
+                enum:
+                  - "no-store"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/PasswordResult"
+        "400":
+          "$ref": "#/components/responses/Error400"
+        "401":
+          "$ref": "#/components/responses/Error401"
+        "403":
+          "$ref": "#/components/responses/Error403"
+  "/instances/{id}/processes":
+    parameters:
+      -
+        name: "id"
+        in: "path"
+        required: true
+        schema:
+          type: "string"
+        description: "管理 ID 或实例名称；其他路径使用对应对象 ID。"
+    get:
+      operationId: "getProcesses"
+      summary: "读取所选实例内部进程"
+      tags:
+        - "管理"
+      x-permissions:
+        - "admin"
+        - "read"
+        - "manage"
+      responses:
+        "200":
+          description: "成功。"
+          headers:
+            Cache-Control:
+              schema:
+                type: "string"
+                enum:
+                  - "no-store"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Processes"
+        "401":
+          "$ref": "#/components/responses/Error401"
+        "403":
+          "$ref": "#/components/responses/Error403"
+        "404":
+          "$ref": "#/components/responses/Error404"
+        "502":
+          "$ref": "#/components/responses/Error502"
+  "/instances/{id}/metrics":
+    parameters:
+      -
+        name: "id"
+        in: "path"
+        required: true
+        schema:
+          type: "string"
+        description: "管理 ID 或实例名称；其他路径使用对应对象 ID。"
+    get:
+      operationId: "getInstanceMetrics"
+      summary: "查询实例资源历史"
+      tags:
+        - "管理"
+      x-permissions:
+        - "admin"
+        - "read"
+        - "manage"
+      parameters:
+        -
+          name: "from"
+          in: "query"
+          required: false
+          schema:
+            type: "integer"
+            format: "int64"
+          description: "Unix 秒；省略则不限制该侧时间边界。"
+        -
+          name: "to"
+          in: "query"
+          required: false
+          schema:
+            type: "integer"
+            format: "int64"
+          description: "Unix 秒；省略则不限制该侧时间边界。"
+      responses:
+        "200":
+          description: "成功。"
+          headers:
+            Cache-Control:
+              schema:
+                type: "string"
+                enum:
+                  - "no-store"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Series"
+        "401":
+          "$ref": "#/components/responses/Error401"
+        "403":
+          "$ref": "#/components/responses/Error403"
+        "404":
+          "$ref": "#/components/responses/Error404"
+        "500":
+          "$ref": "#/components/responses/Error500"
+  "/tasks/{id}":
+    parameters:
+      -
+        name: "id"
+        in: "path"
+        required: true
+        schema:
+          type: "string"
+        description: "对应对象 ID。"
+    get:
+      operationId: "getTask"
+      summary: "查询逐实例任务进度"
+      tags:
+        - "管理"
+      description: "普通查询不返回密码或密文。credentialAvailable 仅表示未领取且未过期；查询时清除该任务的过期暂存凭据。"
+      x-permissions:
+        - "admin"
+        - "read"
+        - "manage"
+      responses:
+        "200":
+          description: "成功。"
+          headers:
+            Cache-Control:
+              schema:
+                type: "string"
+                enum:
+                  - "no-store"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Task"
+        "401":
+          "$ref": "#/components/responses/Error401"
+        "403":
+          "$ref": "#/components/responses/Error403"
+        "404":
+          "$ref": "#/components/responses/Error404"
+  "/tasks/{id}/credentials":
+    parameters:
+      -
+        name: "id"
+        in: "path"
+        required: true
+        schema:
+          type: "string"
+        description: "对应对象 ID。"
+    post:
+      operationId: "claimCredentials"
+      summary: "领取一次性初始凭据"
+      tags:
+        - "管理"
+      description: "凭据加密暂存 15 分钟；成功领取清除，重复领取或过期返回空数组。启动、后台维护和相关查询均清理过期暂存。普通任务读取不能解密。响应丢失时可通过密码重置恢复。"
+      x-permissions:
+        - "admin"
+        - "manage"
+      responses:
+        "200":
+          description: "成功。"
+          headers:
+            Cache-Control:
+              schema:
+                type: "string"
+                enum:
+                  - "no-store"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Credentials"
+        "401":
+          "$ref": "#/components/responses/Error401"
+        "403":
+          "$ref": "#/components/responses/Error403"
+        "409":
+          "$ref": "#/components/responses/Error409"
+  "/images":
+    get:
+      operationId: "listImages"
+      summary: "列出登记的镜像"
+      tags:
+        - "管理"
+      description: "当前列表是本地登记信息，不代表已验证实际镜像或创建来源。"
+      x-permissions:
+        - "admin"
+        - "read"
+        - "manage"
+      responses:
+        "200":
+          description: "成功。"
+          headers:
+            Cache-Control:
+              schema:
+                type: "string"
+                enum:
+                  - "no-store"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Images"
+        "401":
+          "$ref": "#/components/responses/Error401"
+        "403":
+          "$ref": "#/components/responses/Error403"
+    post:
+      operationId: "registerImage"
+      summary: "登记镜像别名"
+      tags:
+        - "管理"
+      description: "当前仅登记本地别名；尚未核对实际镜像存在性。"
+      x-permissions:
+        - "admin"
+        - "manage"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              "$ref": "#/components/schemas/ImageRequest"
+      responses:
+        "200":
+          description: "成功。"
+          headers:
+            Cache-Control:
+              schema:
+                type: "string"
+                enum:
+                  - "no-store"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/OK"
+        "400":
+          "$ref": "#/components/responses/Error400"
+        "401":
+          "$ref": "#/components/responses/Error401"
+        "403":
+          "$ref": "#/components/responses/Error403"
+  "/tokens":
+    get:
+      operationId: "listTokens"
+      summary: "列出 API Token"
+      tags:
+        - "认证"
+      description: "只返回元数据；空列表为 []。读取失败返回 500，不用空列表隐藏存储错误。"
+      x-permissions:
+        - "admin"
+        - "manage"
+      responses:
+        "200":
+          description: "成功。"
+          headers:
+            Cache-Control:
+              schema:
+                type: "string"
+                enum:
+                  - "no-store"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/TokenList"
+        "401":
+          "$ref": "#/components/responses/Error401"
+        "403":
+          "$ref": "#/components/responses/Error403"
+        "500":
+          "$ref": "#/components/responses/Error500"
+    post:
+      operationId: "createToken"
+      summary: "签发 API Token"
+      tags:
+        - "认证"
+      x-permissions:
+        - "admin"
+        - "manage"
+      requestBody:
+        required: true
+        content:
+          "application/json":
+            schema:
+              "$ref": "#/components/schemas/TokenCreate"
+      responses:
+        "200":
+          description: "成功。"
+          headers:
+            Cache-Control:
+              schema:
+                type: "string"
+                enum:
+                  - "no-store"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/TokenIssued"
+        "400":
+          "$ref": "#/components/responses/Error400"
+        "401":
+          "$ref": "#/components/responses/Error401"
+        "403":
+          "$ref": "#/components/responses/Error403"
+        "500":
+          "$ref": "#/components/responses/Error500"
+  "/tokens/{id}/revoke":
+    parameters:
+      -
+        name: "id"
+        in: "path"
+        required: true
+        schema:
+          type: "string"
+        description: "对应对象 ID。"
+    post:
+      operationId: "revokeToken"
+      summary: "撤销 API Token"
+      tags:
+        - "认证"
+      description: "撤销后立即失效；重复撤销已有 Token 成功。管理 Token 可撤销自己或其他 Token。"
+      x-permissions:
+        - "admin"
+        - "manage"
+      responses:
+        "200":
+          description: "成功。"
+          headers:
+            Cache-Control:
+              schema:
+                type: "string"
+                enum:
+                  - "no-store"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/OK"
+        "401":
+          "$ref": "#/components/responses/Error401"
+        "403":
+          "$ref": "#/components/responses/Error403"
+        "404":
+          "$ref": "#/components/responses/Error404"
+        "500":
+          "$ref": "#/components/responses/Error500"
+  "/metrics/host":
+    get:
+      operationId: "getHostMetrics"
+      summary: "查询母机资源历史"
+      tags:
+        - "管理"
+      x-permissions:
+        - "admin"
+        - "read"
+        - "manage"
+      parameters:
+        -
+          name: "from"
+          in: "query"
+          required: false
+          schema:
+            type: "integer"
+            format: "int64"
+          description: "Unix 秒；省略则不限制该侧时间边界。"
+        -
+          name: "to"
+          in: "query"
+          required: false
+          schema:
+            type: "integer"
+            format: "int64"
+          description: "Unix 秒；省略则不限制该侧时间边界。"
+      responses:
+        "200":
+          description: "成功。"
+          headers:
+            Cache-Control:
+              schema:
+                type: "string"
+                enum:
+                  - "no-store"
+          content:
+            "application/json":
+              schema:
+                "$ref": "#/components/schemas/Series"
+        "401":
+          "$ref": "#/components/responses/Error401"
+        "403":
+          "$ref": "#/components/responses/Error403"
+        "500":
+          "$ref": "#/components/responses/Error500"
 components:
   securitySchemes:
-    sessionCookie: { type: apiKey, in: cookie, name: particeps_session }
-    bearerToken: { type: http, scheme: bearer }
-  parameters:
-    InstanceID: { name: id, in: path, required: true, schema: { type: string } }
+    sessionCookie:
+      type: "apiKey"
+      in: "cookie"
+      name: "particeps_session"
+    bearerToken:
+      type: "http"
+      scheme: "bearer"
+      description: "独立只读或管理 Token；角色由 Agent 数据库校验。"
+  schemas:
+    Error:
+      type: "object"
+      required:
+        - "error"
+      properties:
+        error:
+          type: "string"
+    OK:
+      type: "object"
+      required:
+        - "ok"
+      properties:
+        ok:
+          type: "string"
+          enum:
+            - "1"
+    Meta:
+      type: "object"
+      required:
+        - "product"
+        - "api"
+      properties:
+        product:
+          type: "string"
+          enum:
+            - "particeps"
+        api:
+          type: "string"
+          enum:
+            - "v1"
+    LoginRequest:
+      type: "object"
+      required:
+        - "password"
+      properties:
+        password:
+          type: "string"
+          format: "password"
+      additionalProperties: false
+    TokenCreate:
+      type: "object"
+      required:
+        - "name"
+        - "role"
+      properties:
+        name:
+          type: "string"
+          minLength: 1
+          maxLength: 100
+        role:
+          type: "string"
+          enum:
+            - "read"
+            - "manage"
+      additionalProperties: false
+    Token:
+      type: "object"
+      required:
+        - "id"
+        - "name"
+        - "role"
+        - "createdAt"
+        - "revoked"
+      properties:
+        id:
+          type: "string"
+        name:
+          type: "string"
+        role:
+          type: "string"
+          enum:
+            - "read"
+            - "manage"
+        createdAt:
+          type: "integer"
+          format: "int64"
+        revoked:
+          type: "boolean"
+    TokenIssued:
+      type: "object"
+      required:
+        - "id"
+        - "token"
+        - "role"
+      properties:
+        id:
+          type: "string"
+        token:
+          type: "string"
+          description: "仅本次响应返回明文；请妥善保存。"
+        role:
+          type: "string"
+          enum:
+            - "read"
+            - "manage"
+    TokenList:
+      type: "object"
+      required:
+        - "tokens"
+      properties:
+        tokens:
+          type: "array"
+          items:
+            "$ref": "#/components/schemas/Token"
+    Pool:
+      type: "object"
+      properties:
+        ipv4:
+          type: "array"
+          items:
+            type: "string"
+        ipv6:
+          type: "array"
+          items:
+            type: "string"
+        prefixes:
+          type: "array"
+          items:
+            type: "string"
+        natIPv4:
+          type: "string"
+        nat66:
+          type: "string"
+        dedicatedV4:
+          type: "array"
+          items:
+            type: "string"
+      additionalProperties: false
+    Address:
+      type: "object"
+      properties:
+        ip:
+          type: "string"
+        family:
+          type: "string"
+        prefix:
+          type: "integer"
+        interface:
+          type: "string"
+        kind:
+          type: "string"
+        global:
+          type: "boolean"
+    Network:
+      type: "object"
+      required:
+        - "addresses"
+      properties:
+        addresses:
+          type: "array"
+          items:
+            "$ref": "#/components/schemas/Address"
+    Host:
+      type: "object"
+      properties:
+        host:
+          type: "object"
+          additionalProperties: true
+        cpuCapCores:
+          type: "number"
+        configuredCores:
+          type: "number"
+        overcommit:
+          type: "number"
+        guestCap:
+          type: "object"
+          additionalProperties: true
+        incus:
+          type: "object"
+          required:
+            - "ok"
+          properties:
+            ok:
+              type: "boolean"
+            error:
+              type: "string"
+    CapRequest:
+      type: "object"
+      required:
+        - "cores"
+      properties:
+        cores:
+          type: "number"
+          minimum: 0.25
+      additionalProperties: false
+    CapResult:
+      type: "object"
+      required:
+        - "cores"
+        - "cap"
+      properties:
+        cores:
+          type: "number"
+        cap:
+          type: "object"
+          additionalProperties: true
+    CreateRequest:
+      type: "object"
+      required:
+        - "name"
+      properties:
+        name:
+          type: "string"
+          minLength: 1
+        image:
+          type: "string"
+          default: "alpine/3.21/cloud"
+        cpuCores:
+          type: "number"
+          minimum: 0
+          default: 0.5
+        cpuPin:
+          type: "string"
+        memoryMib:
+          type: "integer"
+          minimum: 0
+        diskGib:
+          type: "integer"
+          minimum: 0
+        bandwidthMbps:
+          type: "integer"
+          minimum: 0
+          default: 0
+        stackMode:
+          type: "string"
+          enum:
+            - "v4"
+            - "v6"
+            - "dual"
+        sshPubKey:
+          type: "string"
+        password:
+          type: "string"
+          format: "password"
+        passwordLogin:
+          type: "boolean"
+          default: true
+        count:
+          type: "integer"
+          minimum: 0
+          maximum: 256
+          default: 1
+      additionalProperties: false
+      description: "零值资源采用模板默认值。CPU 以 0.01 核为步长，并受有效总帽及 CPU 集合约束；网络模式还须通过地址池检查。字段存在不代表尚未完成的 IPv6 或 SSH 能力已验收。"
+    ResourceRequest:
+      type: "object"
+      properties:
+        cpuCores:
+          type: "number"
+          minimum: 0.01
+        cpuPin:
+          type: "string"
+        memoryMib:
+          type: "integer"
+          minimum: 1
+        diskGib:
+          type: "integer"
+          minimum: 1
+        bandwidthMbps:
+          type: "integer"
+          minimum: 0
+      additionalProperties: false
+    PasswordRequest:
+      type: "object"
+      properties:
+        password:
+          type: "string"
+          format: "password"
+          description: "为空或省略时自动生成。必须为不含换行或 NUL 的单行。"
+      additionalProperties: false
+    PasswordResult:
+      type: "object"
+      required:
+        - "password"
+      properties:
+        password:
+          type: "string"
+          format: "password"
+    RebuildRequest:
+      type: "object"
+      properties:
+        image:
+          type: "string"
+      additionalProperties: false
+    PortAdd:
+      type: "object"
+      properties:
+        number:
+          type: "integer"
+          minimum: 0
+          maximum: 65535
+          default: 0
+      additionalProperties: false
+    PortEdit:
+      type: "object"
+      required:
+        - "target"
+      properties:
+        target:
+          type: "integer"
+          minimum: 1
+          maximum: 65535
+      additionalProperties: false
+    Port:
+      type: "object"
+      required:
+        - "number"
+        - "proto"
+        - "listenIp"
+        - "target"
+      properties:
+        number:
+          type: "integer"
+        proto:
+          type: "string"
+          enum:
+            - "tcp"
+            - "udp"
+        listenIp:
+          type: "string"
+        target:
+          type: "integer"
+    Instance:
+      type: "object"
+      required:
+        - "id"
+        - "name"
+        - "status"
+        - "networkStatus"
+      properties:
+        id:
+          type: "string"
+        name:
+          type: "string"
+        incusName:
+          type: "string"
+        image:
+          type: "string"
+        cpuCores:
+          type: "number"
+        cpuPin:
+          type: "string"
+        memoryMib:
+          type: "integer"
+        diskGib:
+          type: "integer"
+        bandwidthMbps:
+          type: "integer"
+        stackMode:
+          type: "string"
+        desiredPower:
+          type: "string"
+        natIpv4:
+          type: "string"
+        dedicatedIpv4:
+          type: "string"
+        ipv6:
+          type: "string"
+        ipv6Mode:
+          type: "string"
+        status:
+          type: "string"
+        resourceStatus:
+          type: "string"
+        networkStatus:
+          type: "string"
+          enum:
+            - "unconfigured"
+            - "pending"
+            - "ready"
+            - "inactive"
+            - "waiting-address"
+            - "cleanup-pending"
+            - "needs-reconciliation"
+          description: "ready 表示规则已回读且旧 NAT 连接已处理，不证明外部服务可达。其他状态可能仍保留分配，不得把失败当作回滚。"
+        networkError:
+          type: "string"
+        cpuUsed:
+          type: "number"
+        memUsed:
+          type: "integer"
+          format: "int64"
+        rxBps:
+          type: "number"
+          nullable: true
+        txBps:
+          type: "number"
+          nullable: true
+        cpuQuality:
+          type: "string"
+        networkQuality:
+          type: "string"
+        ports:
+          type: "array"
+          items:
+            "$ref": "#/components/schemas/Port"
+    Instances:
+      type: "object"
+      required:
+        - "instances"
+      properties:
+        instances:
+          type: "array"
+          items:
+            "$ref": "#/components/schemas/Instance"
+    TaskItem:
+      type: "object"
+      required:
+        - "name"
+        - "status"
+        - "step"
+      properties:
+        name:
+          type: "string"
+        instanceId:
+          type: "string"
+        status:
+          type: "string"
+        step:
+          type: "string"
+        error:
+          type: "string"
+        credentialAvailable:
+          type: "boolean"
+    Task:
+      type: "object"
+      required:
+        - "id"
+        - "kind"
+        - "status"
+        - "items"
+      properties:
+        id:
+          type: "string"
+        kind:
+          type: "string"
+        status:
+          type: "string"
+        items:
+          type: "array"
+          items:
+            "$ref": "#/components/schemas/TaskItem"
+    Credential:
+      type: "object"
+      required:
+        - "name"
+        - "instanceId"
+        - "password"
+      properties:
+        name:
+          type: "string"
+        instanceId:
+          type: "string"
+        password:
+          type: "string"
+          format: "password"
+    Credentials:
+      type: "object"
+      required:
+        - "credentials"
+      properties:
+        credentials:
+          type: "array"
+          items:
+            "$ref": "#/components/schemas/Credential"
+    Image:
+      type: "object"
+      properties:
+        alias:
+          type: "string"
+        source:
+          type: "string"
+        fingerprint:
+          type: "string"
+    Images:
+      type: "object"
+      required:
+        - "images"
+      properties:
+        images:
+          type: "array"
+          items:
+            "$ref": "#/components/schemas/Image"
+          nullable: true
+    ImageRequest:
+      type: "object"
+      required:
+        - "alias"
+      properties:
+        alias:
+          type: "string"
+      additionalProperties: false
+    Process:
+      type: "object"
+      properties:
+        pid:
+          type: "integer"
+        name:
+          type: "string"
+        user:
+          type: "string"
+        state:
+          type: "string"
+        start:
+          type: "integer"
+          format: "int64"
+          minimum: 0
+          description: "内核进程启动计数，用于区分 PID 复用。"
+        cpu:
+          type: "number"
+          description: "当前为累计 CPU 秒，非瞬时百分比。"
+        rss:
+          type: "integer"
+          format: "int64"
+    Processes:
+      type: "object"
+      required:
+        - "instanceId"
+        - "processes"
+      properties:
+        instanceId:
+          type: "string"
+        processes:
+          type: "array"
+          items:
+            "$ref": "#/components/schemas/Process"
+    Metric:
+      type: "object"
+      properties:
+        ts:
+          type: "integer"
+          format: "int64"
+        cpuCores:
+          type: "number"
+        rxBps:
+          type: "number"
+          nullable: true
+        txBps:
+          type: "number"
+          nullable: true
+        quality:
+          type: "string"
+        networkQuality:
+          type: "string"
+        quota:
+          type: "number"
+        quotaPercent:
+          type: "number"
+    Series:
+      type: "object"
+      required:
+        - "series"
+      properties:
+        series:
+          type: "array"
+          items:
+            "$ref": "#/components/schemas/Metric"
   responses:
-    PortConflict:
-      description: 号码冲突、后端未确认或需要继续清理。返回错误时号码/目标可能已经保存，请 GET 实例检查状态；不得把重复请求当成安全回滚。
+    Error400:
+      description: "请求字段、参数或当前状态不允许此操作。"
       content:
-        application/json:
+        "application/json":
           schema:
-            type: object
-            required: [error]
-            properties:
-              error: { type: string }
-    PortInstance:
-      description: 最新实例。端口字段为已保存的分配，是否应用以 networkStatus 为准；停止实例的规则可为 inactive。
+            "$ref": "#/components/schemas/Error"
+    Error401:
+      description: "未认证或凭据无效。"
       content:
-        application/json:
+        "application/json":
           schema:
-            type: object
-            required: [id, networkStatus]
-            properties:
-              id: { type: string }
-              networkStatus:
-                type: string
-                enum: [unconfigured, pending, ready, inactive, waiting-address, cleanup-pending, needs-reconciliation]
-                description: ready 表示规则已回读且旧 NAT 连接处理完成，不代表防火墙、路由和小鸡服务的外部可达性已验证。
-              networkError: { type: string }
-              ports:
-                type: array
-                items:
-                  type: object
-                  required: [number, proto, listenIp, target]
-                  properties:
-                    number: { type: integer }
-                    proto: { type: string, enum: [tcp, udp] }
-                    listenIp: { type: string }
-                    target: { type: integer }
+            "$ref": "#/components/schemas/Error"
+    Error403:
+      description: "权限不足或会话来源校验失败。"
+      content:
+        "application/json":
+          schema:
+            "$ref": "#/components/schemas/Error"
+    Error404:
+      description: "资源不存在。"
+      content:
+        "application/json":
+          schema:
+            "$ref": "#/components/schemas/Error"
+    Error409:
+      description: "操作冲突或结果需要核对；可能已经保存变更，应重新查询状态。"
+      content:
+        "application/json":
+          schema:
+            "$ref": "#/components/schemas/Error"
+    Error429:
+      description: "登录尝试达到限制，请在 Retry-After 指定的秒数后重试。"
+      content:
+        "application/json":
+          schema:
+            "$ref": "#/components/schemas/Error"
+      headers:
+        Retry-After:
+          description: "至少等待的秒数。"
+          schema:
+            type: "integer"
+            minimum: 1
+    Error500:
+      description: "服务或存储失败；不能视为操作成功。"
+      content:
+        "application/json":
+          schema:
+            "$ref": "#/components/schemas/Error"
+    Error502:
+      description: "无法获取所选实例的后端进程状态。"
+      content:
+        "application/json":
+          schema:
+            "$ref": "#/components/schemas/Error"

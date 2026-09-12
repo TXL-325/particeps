@@ -25,6 +25,10 @@ func Open(path string) (*Store, error) {
 		_ = db.Close()
 		return nil, err
 	}
+	if err := s.PruneAuthentication(time.Now()); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
 	return s, nil
 }
 
@@ -42,6 +46,7 @@ CREATE TABLE IF NOT EXISTS sessions (
   created_at INTEGER NOT NULL,
   expires_at INTEGER NOT NULL
 );
+CREATE INDEX IF NOT EXISTS sessions_expiry ON sessions(expires_at);
 CREATE TABLE IF NOT EXISTS tokens (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
@@ -89,6 +94,11 @@ CREATE TABLE IF NOT EXISTS ports (
 CREATE TABLE IF NOT EXISTS resource_updates (
   instance_id TEXT PRIMARY KEY REFERENCES instances(id) ON DELETE CASCADE,
   request_json TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS password_updates (
+  instance_id TEXT PRIMARY KEY REFERENCES instances(id) ON DELETE CASCADE,
+  operation TEXT NOT NULL DEFAULT '',
   created_at INTEGER NOT NULL
 );
 CREATE TABLE IF NOT EXISTS instance_network (

@@ -81,6 +81,9 @@ func (a *App) sealCredential(taskID, instanceID, password string) (string, error
 // ClaimInitialCredentials consumes encrypted credentials once. Ordinary task
 // reads never decrypt them; a failed delivery can be recovered by password reset.
 func (a *App) ClaimInitialCredentials(taskID string) ([]InitialCredential, error) {
+	if err := a.Store.ClearExpiredCredentials(taskID, time.Now()); err != nil {
+		return nil, err
+	}
 	tx, err := a.Store.DB.Begin()
 	if err != nil {
 		return nil, err

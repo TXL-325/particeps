@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"particeps/internal/auth"
+	"particeps/internal/config"
 	"particeps/internal/core"
 	"particeps/internal/store"
 )
@@ -24,7 +25,7 @@ func testServer(t *testing.T) (*Server, string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &Server{App: &core.App{Store: s, Auth: a}}, session
+	return &Server{App: &core.App{Store: s, Auth: a, Cfg: config.Defaults()}}, session
 }
 
 func tokenRequest(handler http.Handler, session, body, origin string) *httptest.ResponseRecorder {

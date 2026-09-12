@@ -1,19 +1,12 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
-import { shallowRef } from 'vue'
-import { api } from './api'
+import { useRoute } from 'vue-router'
+import { useLogout } from './composables/useLogout'
 
 const route = useRoute()
-const router = useRouter()
+const { busy: loggingOut, error: logoutError, logout } = useLogout()
 const hideNav = computed(() => route.path === '/login')
 
-const authed = shallowRef(true)
-async function logout() {
-  await api.logout()
-  authed.value = false
-  await router.push('/login')
-}
 </script>
 
 <template>
@@ -27,9 +20,10 @@ async function logout() {
         <RouterLink to="/instances">小鸡</RouterLink>
         <RouterLink to="/settings">设置</RouterLink>
         <span class="spacer" />
-        <button type="button" @click="logout">退出</button>
+        <button type="button" :disabled="loggingOut" @click="logout">{{ loggingOut ? '退出中…' : '退出' }}</button>
       </nav>
       <section class="page">
+        <p v-if="logoutError" class="fault" role="alert">{{ logoutError }}</p>
         <RouterView />
       </section>
     </div>

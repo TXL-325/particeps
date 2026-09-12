@@ -53,7 +53,7 @@ export const api = {
   tokens: () => req<{ tokens: Token[] }>('/api/v1/tokens'),
   newToken: (name: string, role: string) =>
     req<{ id: string; token: string; role: string }>('/api/v1/tokens', { method: 'POST', body: JSON.stringify({ name, role }) }),
-  revoke: (id: string) => req(`/api/v1/tokens/${id}/revoke`, { method: 'POST', body: '{}' }),
+  revoke: (id: string) => req(`/api/v1/tokens/${encodeURIComponent(id)}/revoke`, { method: 'POST', body: '{}' }),
 }
 
 export interface NetAddr { ip: string; family: string; prefix: number; global: boolean; interface: string; kind: string }

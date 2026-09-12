@@ -304,6 +304,8 @@ func (a *App) runCreateItem(taskID, name string, req CreateReq) {
 	}
 	set("running", "prepare", "", "", "")
 	id := store.NewID()
+	unlock := a.lockInstance(id)
+	defer unlock()
 	incusName := "p-" + id[:12]
 	pwLogin := true
 	if req.PasswordLogin != nil {
@@ -381,7 +383,7 @@ func (a *App) runCreateItem(taskID, name string, req CreateReq) {
 	time.Sleep(3 * time.Second)
 	if pwLogin && plain != "" {
 		set("running", "password", "", id, "")
-		if err := a.Incus.SetRootPassword(incusName, plain); err != nil {
+		if err := a.setInstancePassword(id, incusName, plain); err != nil {
 			set("failed", "password", err.Error(), id, "")
 			return
 		}
@@ -443,6 +445,9 @@ func (a *App) refreshTask(id string) {
 
 func (a *App) GetTask(id string) (Task, error) {
 	t := Task{Items: []TaskItem{}}
+	if err := a.Store.ClearExpiredCredentials(id, time.Now()); err != nil {
+		return t, err
+	}
 	err := a.Store.DB.QueryRow(`SELECT id, kind, status FROM tasks WHERE id=?`, id).Scan(&t.ID, &t.Kind, &t.Status)
 	if err != nil {
 		return t, err
@@ -470,6 +475,14 @@ func (a *App) GetTask(id string) (Task, error) {
 }
 
 func (a *App) Power(id, action string, force bool) error {
+	id, unlock, err := a.lockExistingInstance(id)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	if err := a.reconcilePasswordOperation(id); err != nil {
+		return err
+	}
 	a.allocationMu.Lock()
 	defer a.allocationMu.Unlock()
 	n, err := a.mutableNetwork(id)
@@ -528,6 +541,14 @@ func (a *App) Power(id, action string, force bool) error {
 }
 
 func (a *App) DeleteInstance(id string) error {
+	id, unlock, err := a.lockExistingInstance(id)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	if err := a.reconcilePasswordOperation(id); err != nil {
+		return err
+	}
 	a.resourceMu.Lock()
 	defer a.resourceMu.Unlock()
 	a.allocationMu.Lock()
@@ -581,6 +602,9 @@ func (a *App) DeleteInstance(id string) error {
 		return fail(err)
 	}
 	defer tx.Rollback()
+	if _, err := tx.Exec(`UPDATE task_items SET result_json='' WHERE instance_id=?`, n.ID); err != nil {
+		return err
+	}
 	if _, err := tx.Exec(`DELETE FROM ports WHERE instance_id=?`, n.ID); err != nil {
 		return err
 	}
@@ -739,20 +763,6 @@ func decodeDevices(value any) (map[string]map[string]string, error) {
 	return devices, nil
 }
 
-func (a *App) ResetPassword(id, password string) (string, error) {
-	in, _, err := a.GetInstance(id)
-	if err != nil {
-		return "", err
-	}
-	if password == "" {
-		password = auth.NewTokenPlain()[:16]
-	}
-	if err := a.Incus.SetRootPassword(in.IncusName, password); err != nil {
-		return "", err
-	}
-	return password, nil
-}
-
 func (a *App) RestoreDesiredPower() {
 	rows, err := a.Store.DB.Query(`SELECT id,incus_name,desired_power FROM instances WHERE id NOT IN (SELECT instance_id FROM instance_network WHERE deleting=1)`)
 	if err != nil {
@@ -830,39 +840,6 @@ func (a *App) Series(object, from, to string) ([]map[string]any, error) {
 		}
 	}
 	return out, nil
-}
-
-func (a *App) TokenCreate(name, role string) (id, plain string, err error) {
-	if role != "read" && role != "manage" {
-		return "", "", fmt.Errorf("token role must be read or manage")
-	}
-	plain = auth.NewTokenPlain()
-	id = store.NewID()
-	_, err = a.Store.DB.Exec(`INSERT INTO tokens(id,name,hash,role,created_at) VALUES(?,?,?,?,?)`,
-		id, name, auth.HashToken(plain), role, store.Now())
-	return id, plain, err
-}
-
-func (a *App) TokenRevoke(id string) error {
-	_, err := a.Store.DB.Exec(`UPDATE tokens SET revoked=1 WHERE id=?`, id)
-	return err
-}
-
-func (a *App) Tokens() []map[string]any {
-	rows, err := a.Store.DB.Query(`SELECT id,name,role,created_at,revoked FROM tokens`)
-	if err != nil {
-		return nil
-	}
-	defer rows.Close()
-	var out []map[string]any
-	for rows.Next() {
-		var id, name, role string
-		var created int64
-		var revoked int
-		_ = rows.Scan(&id, &name, &role, &created, &revoked)
-		out = append(out, map[string]any{"id": id, "name": name, "role": role, "createdAt": created, "revoked": revoked == 1})
-	}
-	return out
 }
 
 var _ = sql.ErrNoRows

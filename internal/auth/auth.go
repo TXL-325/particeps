@@ -19,10 +19,10 @@ type Auth struct {
 	S *store.Store
 }
 
-func (a *Auth) HasAdmin() bool {
+func (a *Auth) HasAdmin() (bool, error) {
 	var n int
-	_ = a.S.DB.QueryRow(`SELECT COUNT(*) FROM admin`).Scan(&n)
-	return n > 0
+	err := a.S.DB.QueryRow(`SELECT COUNT(*) FROM admin`).Scan(&n)
+	return n > 0, err
 }
 
 func (a *Auth) SetAdminPassword(plain string) error {
@@ -60,8 +60,9 @@ func (a *Auth) ValidSession(id string) bool {
 	return err == nil && exp > time.Now().Unix()
 }
 
-func (a *Auth) DeleteSession(id string) {
-	_, _ = a.S.DB.Exec(`DELETE FROM sessions WHERE id=?`, id)
+func (a *Auth) DeleteSession(id string) error {
+	_, err := a.S.DB.Exec(`DELETE FROM sessions WHERE id=?`, id)
+	return err
 }
 
 func HashToken(plain string) string {

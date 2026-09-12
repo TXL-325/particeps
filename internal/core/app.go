@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"log"
 	"os"
 	"runtime"
 	"strconv"
@@ -32,22 +31,26 @@ type App struct {
 	Host    *hostmetrics.Sampler
 	Cap     cgroupcap.Status
 
-	mu           sync.Mutex
-	resourceMu   sync.Mutex
-	allocationMu sync.Mutex
-	hostPorts    func() (map[int]bool, error)
-	clearNAT     func([]Port) error
-	dirLock      *os.File
-	collectStop  chan struct{}
-	collectDone  chan struct{}
-	closeOnce    sync.Once
-	cpuMu        sync.RWMutex
-	applyCap     func(float64) cgroupcap.Status
-	credentialMu sync.Mutex
-	prevHost     sample.Point
-	prevInst     map[string]sample.Point
-	prevInstAt   map[string]time.Time
-	sem          chan struct{}
+	mu              sync.Mutex
+	resourceMu      sync.Mutex
+	allocationMu    sync.Mutex
+	hostPorts       func() (map[int]bool, error)
+	clearNAT        func([]Port) error
+	dirLock         *os.File
+	collectStop     chan struct{}
+	collectDone     chan struct{}
+	authDone        chan struct{}
+	closeOnce       sync.Once
+	bootstrapMu     sync.Mutex
+	instanceLocksMu sync.Mutex
+	instanceLocks   map[string]*instanceLock
+	cpuMu           sync.RWMutex
+	applyCap        func(float64) cgroupcap.Status
+	credentialMu    sync.Mutex
+	prevHost        sample.Point
+	prevInst        map[string]sample.Point
+	prevInstAt      map[string]time.Time
+	sem             chan struct{}
 }
 
 type PoolSettings struct {
@@ -114,6 +117,7 @@ func Open(cfg config.Config) (*App, error) {
 		dirLock:     lock,
 		collectStop: make(chan struct{}),
 		collectDone: make(chan struct{}),
+		authDone:    make(chan struct{}),
 	}
 	capCores := cfg.CPUCapCores
 	if v := st.Setting("cpu_cap_cores", ""); v != "" {
@@ -134,6 +138,7 @@ func Open(cfg config.Config) (*App, error) {
 	a.seedImages()
 	opened = true
 	go a.collectLoop()
+	go a.authenticationMaintenance()
 	return a, nil
 }
 
@@ -149,27 +154,15 @@ func (a *App) Close() {
 			close(a.collectStop)
 			<-a.collectDone
 		}
+		if a.authDone != nil {
+			<-a.authDone
+		}
 		_ = a.Store.Close()
 		_ = a.Metrics.Close()
 		if a.dirLock != nil {
 			_ = a.dirLock.Close()
 		}
 	})
-}
-
-func (a *App) BootstrapAdmin() (string, error) {
-	if a.Auth.HasAdmin() {
-		return "", nil
-	}
-	plain := auth.NewTokenPlain()[:20]
-	if err := a.Auth.SetAdminPassword(plain); err != nil {
-		return "", err
-	}
-	if err := os.WriteFile(a.Cfg.Bootstrap(), []byte(plain+"\n"), 0600); err != nil {
-		return "", err
-	}
-	log.Printf("admin password written to %s", a.Cfg.Bootstrap())
-	return plain, nil
 }
 
 func (a *App) HostSnapshot() map[string]any {

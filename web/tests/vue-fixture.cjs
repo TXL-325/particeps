@@ -1,6 +1,10 @@
 const fs = require('node:fs')
 const path = require('node:path')
 const vm = require('node:vm')
+// DOM directives still run when using Vue's custom renderer. Supply the
+// document identities and element methods that those directives inspect.
+globalThis.Document ??= class FixtureDocument {}
+globalThis.ShadowRoot ??= class FixtureShadowRoot {}
 const vue = require('vue')
 const { parse, compileScript } = require('@vue/compiler-sfc')
 const { transformSync } = require('esbuild')
@@ -19,7 +23,7 @@ function loader(api = {}, globals = {}) {
     const module = { exports: {} }
     cache.set(filename, module)
     function resolve(name) {
-      if (name === 'vue-router') return { useRouter: () => ({ push: async () => {} }) }
+      if (name === 'vue-router') return { useRouter: () => globals.router ?? ({ push: async () => {} }), useRoute: () => ({ path: '/settings' }) }
       if (!name.startsWith('.')) return require(name)
       let target = path.resolve(path.dirname(filename), name)
       if (!path.extname(target)) target += '.ts'
@@ -33,7 +37,10 @@ function loader(api = {}, globals = {}) {
 }
 
 const renderer = vue.createRenderer({
-  createElement: tag => ({ tag, children: [], parent: null, text: '', props: {} }),
+  createElement: tag => ({ tag, tagName: tag.toUpperCase(), children: [], parent: null, text: '', props: {}, value: '',
+    addEventListener() {}, removeEventListener() {}, getRootNode() { return { activeElement: null } },
+    get options() { return this.children.filter(node => node.tag === 'option') },
+  }),
   createText: text => ({ tag: '#text', children: [], parent: null, text, props: {} }),
   createComment: text => ({ tag: '#comment', children: [], parent: null, text, props: {} }),
   insert(node, parent, anchor) {
@@ -48,7 +55,7 @@ const renderer = vue.createRenderer({
   setElementText(node, text) { node.text = text; node.children = [] },
   parentNode: node => node.parent,
   nextSibling: node => node.parent?.children[node.parent.children.indexOf(node) + 1] ?? null,
-  patchProp(node, name, previous, value) { node.props[name] = value },
+  patchProp(node, name, previous, value) { node.props[name] = value; if (name === 'value' || name === 'type') node[name] = value },
 })
 
 function fixture(filename = 'src/views/InstanceDetailView.vue', apiOverrides = {}) {
@@ -73,10 +80,13 @@ function fixture(filename = 'src/views/InstanceDetailView.vue', apiOverrides = {
     async action(id, operation) { calls.push(['action', id, operation]) },
     ...apiOverrides,
   }
-  const Component = loader(api, { window: fakeWindow, document: fakeDocument })(filename).default
+  const router = { async push(path) { calls.push(['route', path]) } }
+  const Component = loader(api, { window: fakeWindow, document: fakeDocument, router })(filename).default
   const selected = vue.ref('A')
   const root = { tag: 'root', children: [], parent: null, text: '', props: {} }
   const app = renderer.createApp({ render: () => vue.h(Component, { id: selected.value }) })
+  app.component('RouterLink', { setup(_, context) { return () => vue.h('a', context.slots.default?.()) } })
+  app.component('RouterView', { render() { return null } })
   app.mount(root)
   function visibility(hidden) { fakeDocument.hidden = hidden; for (const fn of listeners.get('visibilitychange') ?? []) fn() }
   return { pending, calls, timers, selected, root, app, visibility }

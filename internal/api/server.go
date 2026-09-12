@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"io/fs"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -18,7 +19,8 @@ import (
 )
 
 type Server struct {
-	App *core.App
+	App          *core.App
+	loginLimiter auth.LoginLimiter
 }
 
 func (s *Server) Handler() http.Handler {
@@ -161,6 +163,17 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &body) {
 		return
 	}
+	peer := r.RemoteAddr
+	if host, _, err := net.SplitHostPort(peer); err == nil {
+		peer = host
+	}
+	release, retry := s.loginLimiter.Begin(peer)
+	if release == nil {
+		w.Header().Set("Retry-After", strconv.Itoa(retry))
+		writeErr(w, http.StatusTooManyRequests, "too many login attempts; try again later")
+		return
+	}
+	defer release()
 	if !s.App.Auth.CheckAdmin(body.Password) {
 		writeErr(w, 401, "invalid password")
 		return
@@ -170,7 +183,7 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 500, err.Error())
 		return
 	}
-	auth.SetSessionCookie(w, id, r.TLS != nil)
+	auth.SetSessionCookie(w, id, s.App.Cfg.SessionCookieSecure || r.TLS != nil)
 	writeJSON(w, 200, map[string]string{"ok": "1"})
 }
 
@@ -180,7 +193,10 @@ func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if c, err := r.Cookie("particeps_session"); err == nil {
-		s.App.Auth.DeleteSession(c.Value)
+		if err := s.App.Auth.DeleteSession(c.Value); err != nil {
+			writeErr(w, http.StatusInternalServerError, "session could not be revoked; please retry")
+			return
+		}
 	}
 	auth.ClearSessionCookie(w)
 	writeJSON(w, 200, map[string]string{"ok": "1"})
@@ -445,7 +461,12 @@ func (s *Server) regImage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) tokens(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, 200, map[string]any{"tokens": s.App.Tokens()})
+	tokens, err := s.App.Tokens()
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "tokens could not be loaded")
+		return
+	}
+	writeJSON(w, 200, map[string]any{"tokens": tokens})
 }
 
 func (s *Server) newToken(w http.ResponseWriter, r *http.Request) {
@@ -458,7 +479,11 @@ func (s *Server) newToken(w http.ResponseWriter, r *http.Request) {
 	}
 	id, plain, err := s.App.TokenCreate(body.Name, body.Role)
 	if err != nil {
-		writeErr(w, 400, err.Error())
+		if errors.Is(err, core.ErrInvalidToken) {
+			writeErr(w, http.StatusBadRequest, err.Error())
+		} else {
+			writeErr(w, http.StatusInternalServerError, "token could not be created")
+		}
 		return
 	}
 	writeJSON(w, 200, map[string]string{"id": id, "token": plain, "role": body.Role})
@@ -466,7 +491,11 @@ func (s *Server) newToken(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) revokeToken(w http.ResponseWriter, r *http.Request) {
 	if err := s.App.TokenRevoke(r.PathValue("id")); err != nil {
-		writeErr(w, 400, err.Error())
+		if errors.Is(err, core.ErrTokenNotFound) {
+			writeErr(w, http.StatusNotFound, err.Error())
+		} else {
+			writeErr(w, http.StatusInternalServerError, "token could not be revoked")
+		}
 		return
 	}
 	writeJSON(w, 200, map[string]string{"ok": "1"})

@@ -3,6 +3,7 @@ package incusx
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -13,7 +14,32 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-func (c *Client) Exec(name string, command []string, stdin []byte) (string, error) {
+type ExecError struct {
+	Operation ConfigOperation
+	Cause     error
+}
+
+func (e *ExecError) Error() string { return e.Cause.Error() }
+func (e *ExecError) Unwrap() error { return e.Cause }
+
+func ExecOperationState(err error) ConfigOperation {
+	if err == nil {
+		return ConfigOperation{Terminal: true}
+	}
+	var execution *ExecError
+	if errors.As(err, &execution) {
+		return execution.Operation
+	}
+	return ConfigOperation{}
+}
+
+func (c *Client) Exec(name string, command []string, stdin []byte) (output string, err error) {
+	state := ConfigOperation{}
+	defer func() {
+		if err != nil {
+			err = &ExecError{Operation: state, Cause: err}
+		}
+	}()
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
 	stream := len(stdin) > 0
@@ -24,11 +50,16 @@ func (c *Client) Exec(name string, command []string, stdin []byte) (string, erro
 		"record-output":      !stream,
 	}
 	out, err := c.doContext(ctx, http.MethodPost, "/1.0/instances/"+url.PathEscape(name)+"/exec", body)
+	if out != nil {
+		state.ID = out.Operation
+		state.Terminal = out.Type == "error" && out.Operation == ""
+	}
 	if err != nil {
 		return "", err
 	}
 	if !stream {
 		result, err := c.waitOperationContext(ctx, out.Operation)
+		state.Terminal = operationTerminal(result.StatusCode)
 		if err != nil {
 			return "", err
 		}
@@ -84,6 +115,7 @@ func (c *Client) Exec(name string, command []string, stdin []byte) (string, erro
 		return "", err
 	}
 	result, err := c.waitOperationContext(ctx, out.Operation)
+	state.Terminal = operationTerminal(result.StatusCode)
 	if err != nil {
 		return "", err
 	}

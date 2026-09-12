@@ -8,38 +8,40 @@ import (
 )
 
 type Config struct {
-	Listen          string  `yaml:"listen"`
-	DataDir         string  `yaml:"data_dir"`
-	IncusSocket     string  `yaml:"incus_socket"`
-	IncusProject    string  `yaml:"incus_project"`
-	StoragePool     string  `yaml:"storage_pool"`
-	Network         string  `yaml:"network"`
-	PrivateIPv4CIDR string  `yaml:"private_ipv4_cidr"`
-	TaskConcurrency int     `yaml:"task_concurrency"`
-	CPUCapCores     float64 `yaml:"cpu_cap_cores"`
-	PortPoolStart   int     `yaml:"port_pool_start"`
-	PortPoolEnd     int     `yaml:"port_pool_end"`
-	PortsPerGuest   int     `yaml:"ports_per_guest"`
-	SourceIPLimit   int     `yaml:"source_ip_limit"`
-	SampleSeconds   int     `yaml:"sample_seconds"`
+	Listen              string  `yaml:"listen"`
+	SessionCookieSecure bool    `yaml:"session_cookie_secure"`
+	DataDir             string  `yaml:"data_dir"`
+	IncusSocket         string  `yaml:"incus_socket"`
+	IncusProject        string  `yaml:"incus_project"`
+	StoragePool         string  `yaml:"storage_pool"`
+	Network             string  `yaml:"network"`
+	PrivateIPv4CIDR     string  `yaml:"private_ipv4_cidr"`
+	TaskConcurrency     int     `yaml:"task_concurrency"`
+	CPUCapCores         float64 `yaml:"cpu_cap_cores"`
+	PortPoolStart       int     `yaml:"port_pool_start"`
+	PortPoolEnd         int     `yaml:"port_pool_end"`
+	PortsPerGuest       int     `yaml:"ports_per_guest"`
+	SourceIPLimit       int     `yaml:"source_ip_limit"`
+	SampleSeconds       int     `yaml:"sample_seconds"`
 }
 
 func Defaults() Config {
 	return Config{
-		Listen:          "127.0.0.1:8792",
-		DataDir:         "/var/lib/particeps",
-		IncusSocket:     "/var/lib/incus/unix.socket",
-		IncusProject:    "particeps",
-		StoragePool:     "particeps-pool",
-		Network:         "particepsbr0",
-		PrivateIPv4CIDR: "10.80.0.0/24",
-		TaskConcurrency: 2,
-		CPUCapCores:     0, // 0 = 75% of host CPUs at start
-		PortPoolStart:   20000,
-		PortPoolEnd:     59999,
-		PortsPerGuest:   20,
-		SourceIPLimit:   0,
-		SampleSeconds:   5,
+		Listen:              "127.0.0.1:8792",
+		SessionCookieSecure: true,
+		DataDir:             "/var/lib/particeps",
+		IncusSocket:         "/var/lib/incus/unix.socket",
+		IncusProject:        "particeps",
+		StoragePool:         "particeps-pool",
+		Network:             "particepsbr0",
+		PrivateIPv4CIDR:     "10.80.0.0/24",
+		TaskConcurrency:     2,
+		CPUCapCores:         0, // 0 = 75% of host CPUs at start
+		PortPoolStart:       20000,
+		PortPoolEnd:         59999,
+		PortsPerGuest:       20,
+		SourceIPLimit:       0,
+		SampleSeconds:       5,
 	}
 }
 
