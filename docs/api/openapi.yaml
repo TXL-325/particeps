@@ -268,6 +268,7 @@ paths:
       summary: "列出受管实例"
       tags:
         - "管理"
+      description: "每个实例返回全部已预留端口（含未启用项）；无分配时 ports 为 []。可用号段按去重的 number 合并连续范围。enabled 是期望选择，实际映射还须核对实例状态和 networkStatus。"
       x-permissions:
         - "admin"
         - "read"
@@ -296,7 +297,7 @@ paths:
       summary: "提交批量创建任务"
       tags:
         - "管理"
-      description: "202 只表示任务受理，须查询逐实例结果。密码不出现在普通任务查询中。"
+      description: "202 只表示任务受理，须查询逐实例结果。默认仅预留 TCP，只有号段首个 TCP 到实例 22 自动启用；allocateUDP=true 同时预留同段 UDP，UDP 默认全部未启用。密码不出现在普通任务查询中。"
       x-permissions:
         - "admin"
         - "manage"
@@ -348,6 +349,7 @@ paths:
       summary: "查询实例与端口状态"
       tags:
         - "管理"
+      description: "ports 包含全部已预留的协议端口及 enabled 选择，无分配时为 []；未启用项仍保留号码归属，不代表有实际转发规则。"
       x-permissions:
         - "admin"
         - "read"
@@ -641,10 +643,10 @@ paths:
         description: "管理 ID 或实例名称；其他路径使用对应对象 ID。"
     post:
       operationId: "addPort"
-      summary: "追加一对 TCP/UDP 号码"
+      summary: "追加一个可映射号码"
       tags:
         - "管理"
-      description: "号码为 0 或省略时自动分配；两协议同归属。409 时可能已保存分配，须读取 networkStatus。"
+      description: "号码为 0 或省略时自动分配。始终预留 TCP；实例已有 UDP 分配时同时预留同号 UDP。新增协议项目标为同号且 enabled=false，不自动建立映射；此接口不接受 allocateUDP。号码归属不能跨实例拆分。409 时可能已保存分配，须重新查询 ports 和 networkStatus。"
       x-permissions:
         - "admin"
         - "manage"
@@ -703,10 +705,10 @@ paths:
             - "udp"
     patch:
       operationId: "editPort"
-      summary: "修改协议规则的目标端口"
+      summary: "修改预留端口的目标或映射启用值"
       tags:
         - "管理"
-      description: "保留号码归属并清理旧目标连接。失败可能已保存目标，须重新查询，不依赖旧页面缓存。"
+      description: "target、enabled 至少提供一个；省略的字段保持原值，单独修改 target 不自动启用映射。enabled=false 移除映射并清理相关旧连接，但保留号码归属及目标；启用仍须通过当前状态和归属校验。失败可能已保存变更，须重新查询 ports 和 networkStatus，不依赖旧页面缓存。"
       x-permissions:
         - "admin"
         - "manage"
@@ -716,6 +718,19 @@ paths:
           "application/json":
             schema:
               "$ref": "#/components/schemas/PortEdit"
+            examples:
+              enable:
+                summary: "启用已有预留及其保存的目标"
+                value:
+                  enabled: true
+              disable:
+                summary: "禁用映射并保留号码归属"
+                value:
+                  enabled: false
+              changeTarget:
+                summary: "修改目标并保持原启用值"
+                value:
+                  target: 8080
       responses:
         "200":
           description: "成功。"
@@ -751,7 +766,7 @@ paths:
       summary: "核对并应用已保存的端口规则"
       tags:
         - "管理"
-      description: "不重发结果不明的操作。needs-reconciliation 需要人工核对；此接口不证明公网可达。"
+      description: "仅核对并应用已保存且 enabled=true 的映射，不启用仍在预留的端口。不重发结果不明的操作；needs-reconciliation 需要人工核对。此接口不证明服务或公网可达。"
       x-permissions:
         - "admin"
         - "manage"
@@ -1446,13 +1461,17 @@ components:
         passwordLogin:
           type: "boolean"
           default: true
+        allocateUDP:
+          type: "boolean"
+          default: false
+          description: "创建时同时预留本实例同段 UDP；默认仅分配 TCP。选中的 UDP 默认全部未启用，不自动创建映射。"
         count:
           type: "integer"
           minimum: 0
           maximum: 256
           default: 1
       additionalProperties: false
-      description: "零值资源采用模板默认值。CPU 以 0.01 核为步长，并受有效总帽及 CPU 集合约束；网络模式还须通过地址池检查。字段存在不代表尚未完成的 IPv6 或 SSH 能力已验收。"
+      description: "零值资源采用模板默认值。CPU 以 0.01 核为步长，并受有效总帽及 CPU 集合约束；网络模式还须通过地址池检查。默认预留 20 个连续号码（池和数量按配置），仅首个 TCP 到 22 自动启用。创建须完成 cloud-init 与适用 SSH 服务初始化并执行请求的登录策略；任务受理或字段存在不代表外部 SSH 认证、完整 S3 或 IPv6 能力已经验收。"
     ResourceRequest:
       type: "object"
       properties:
@@ -1501,17 +1520,22 @@ components:
           minimum: 0
           maximum: 65535
           default: 0
+          description: "省略或 0 自动选号；有效非零号码须在配置池内且未占用。新增项仅预留，默认不启用映射。"
       additionalProperties: false
     PortEdit:
       type: "object"
-      required:
-        - "target"
+      minProperties: 1
       properties:
         target:
           type: "integer"
           minimum: 1
           maximum: 65535
+          description: "保存目标端口；省略保持原值，单独修改不会改变 enabled。"
+        enabled:
+          type: "boolean"
+          description: "期望启用值；省略保持原值。false 禁用映射但不释放号码归属。"
       additionalProperties: false
+      description: "target、enabled 至少提供一项，可以同时修改。"
     Port:
       type: "object"
       required:
@@ -1519,6 +1543,7 @@ components:
         - "proto"
         - "listenIp"
         - "target"
+        - "enabled"
       properties:
         number:
           type: "integer"
@@ -1531,6 +1556,10 @@ components:
           type: "string"
         target:
           type: "integer"
+          description: "保存的目标端口；未启用时不表示存在转发。"
+        enabled:
+          type: "boolean"
+          description: "期望启用选择，实例停止时仍保留。实际应用须核对实例运行状态和 networkStatus，不能据此单独宣称服务可达。"
     Instance:
       type: "object"
       required:
@@ -1538,6 +1567,7 @@ components:
         - "name"
         - "status"
         - "networkStatus"
+        - "ports"
       properties:
         id:
           type: "string"
@@ -1603,6 +1633,7 @@ components:
           type: "string"
         ports:
           type: "array"
+          description: "列表与详情均返回全部已预留协议项，包括 enabled=false 的端口；无分配返回 []。按 number 去重后可合并连续可用号段，同号 TCP/UDP 只计一个号码。"
           items:
             "$ref": "#/components/schemas/Port"
     Instances:

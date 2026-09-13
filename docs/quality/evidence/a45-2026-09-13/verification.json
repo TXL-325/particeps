@@ -1,0 +1,234 @@
+{
+  "date": "2026-09-13",
+  "scope": "A4/A5 pre-commit independent review, two P2 repairs, and documentation consolidation",
+  "candidate": {
+    "baseRevision": "49e6a489d60adf483f347fe68d7c39c934017e6e",
+    "sourceHashes": {
+      "deploy/lab/vmnet2-forwarding.sh": "dfaedfaee85b9e2557bc51be25ed2e6ba792868b8fe64001c89c15e82ad965fd",
+      "go.mod": "b99702a9b5a926a305e2857446468605ebd12dce324d86d99ad0080f49f34e09",
+      "go.sum": "09ffeee17dc2d3dbf6ec7d1d90f5d3f25d9acaabd708eeec7d7a24f36ef7ce12",
+      "internal/api/ports_test.go": "e0753bb73ba578281cd7e947cb07b683a9e1506ecd73951d6e6e8a70307e3416",
+      "internal/api/server.go": "c626b3d63dddc6d338586a12026176cd9bc241e324c627eeafeac25d560b9a1f",
+      "internal/core/allocation_test.go": "5130e71cb2c01628ee2fef4335d76f2bbb799b8a9c745e155bad0d4d04470470",
+      "internal/core/allocation.go": "ca3b59f1c5c50211679cb4da5145121cc88e50c9136ab1e17922410b30f9d86a",
+      "internal/core/app.go": "46da525e2d513437d967bd8058988c7f3fa1f58a0ecf7ca2501a5743e660539d",
+      "internal/core/authentication.go": "2dd15317ef549a4e7c4c1fd0e11aa9771f42ecb4ecf9141944c9c61a1e0a8a20",
+      "internal/core/backend.go": "f5a5f5135165e8816e58dd8e3657aadfd8893b5ba9216aafe94ebd0b61299f2c",
+      "internal/core/creation_ssh_test.go": "bf1059073b75c57bcc4e1b545e7e97ff04a955a12e42846eec0b13375f6e9294",
+      "internal/core/creation_ssh.go": "aa0418acc50c86d22e1681c71be60ce81adfc8cfa8287869bec35d77a1e487ca",
+      "internal/core/forwards_test.go": "70adbeb3f42d43603050bb5945d7ed123ccb929dbc2e48cdf7bd6e7ed40e79c6",
+      "internal/core/forwards.go": "adf2b9cebe0de2903de5e373ebd60038629d85c6d9cec17825f3b830aa21e748",
+      "internal/core/instances.go": "ad159762f64c3b2c858c6b211ae270bf6819b5a13cd04cdaa9b38bc2514833c3",
+      "internal/core/ports_test.go": "4f9547093001b487b0e065cff11baad499b8d5a7c6d0d5d7560a1fe31695bf83",
+      "internal/core/ports.go": "4fd81c740a24e904e6091f00182a1b2dab399684e89d8aa0a229b87b6cd74f35",
+      "internal/incusx/exec.go": "1cdaf3616f0134835b1a2ec1f5b0289a1415e885618f1d7abd25508607fe76a8",
+      "internal/incusx/ssh_test.go": "d4c8b150a3381d9c1760171817a0087aedd84ef27e838914d46408e9b193a685",
+      "internal/incusx/ssh.go": "bd01f8984b07f0e54f4710fa7e82bfdfa23f8e2fc82bb6f683eb067f617eb641",
+      "internal/store/store_test.go": "3303a29af2550dc8ee588b9aad4d7017c665c82b052ad5c238ec0bbc11ea57aa",
+      "internal/store/store.go": "90e8257ab11490a053f3251cc67b1a0e02e470e98cc5eadb798df826d3e7cb9b",
+      "internal/web/dist/assets/index-CWN5eAUr.js": "1359de8c302094933053430224e5db92a82fe154586937551d4f623b42cffb25",
+      "internal/web/dist/assets/index-KVRaOcLY.css": "f2acc3897402a88061b3d8e2e97981a97293e2e85dbd3df629cde8333956735b",
+      "internal/web/dist/index.html": "abe5ccde78d6336e8a436abb2604c38e681331e361b35d8ba2d55808b2d3485d",
+      "web/package-lock.json": "8a2cbd658d4ceaea1ed1c0bc57eb0843edc81f0b3a0568afd5d65b9ed6c8a6dc",
+      "web/package.json": "c056a38e9def22aa78bbace5f464bfd9ce4ab87f4908286b557df9eb4a7162b4",
+      "web/src/api.ts": "5c2329e8c3e587f0d27136367eae6d49178424759c8b310fee6ca7442e9e86be",
+      "web/src/components/instance/PortAddForm.vue": "c8e693af2980b87983fa916ab6721e3fced5d1f22e41101f15dad4e54a4cf0f6",
+      "web/src/components/instance/PortAllocationPanel.vue": "7a95d1e3275aef7b3045e36396ece9928140053d7f487fcb3817d079909f39c4",
+      "web/src/components/instance/PortAllocationTable.vue": "f379355d13c69bad4d59c00662ad1db3bf08bd98787cc39d5ecedeb3ca05a946",
+      "web/src/components/instance/PortForwardStatus.vue": "d7ed6b8692b29d3c3702e98fd2f77c9297bdfb6a367d91c430bcec3816a7192d",
+      "web/src/components/instances/BatchCreateForm.vue": "e3eff9b6b0c7d1f776a0a098724da883184130149f0811ca9b2c51836d698149",
+      "web/src/components/instances/InstanceTable.vue": "20d245dad515cee0bb46a5e4c12be8e17741f030fbaee645ac8c0c2109cc2103",
+      "web/src/composables/useBatchCreate.ts": "41f17982f0c445c669b9740ddda48f642f3fda73765174732cb3c04c5614e421",
+      "web/src/composables/usePortActions.ts": "28191d535ef89f4671e54b9bc6ed830145abb2a520ad01bd131f4870858d631c",
+      "web/src/utils/ports.ts": "37a6b0c52480c84bad3ea00d1acf66d29b0679e648b347f625348f7ed947802c",
+      "web/src/utils/requestKey.ts": "cf70084f8efa76ca178f8a34eddd2dffe13f0e88cc2afd3ffffa196f08e69d9a",
+      "web/src/views/InstancesView.vue": "dc4f6e60267b6e2a14d0d2d6c50a54ccf7b4e0740cb6fa91e80d32052c6f8a2b",
+      "web/tests/behavior.test.cjs": "33356bd6f98ff6e3c7776737362d760579e8feebbea2073802713fe96f090c68",
+      "web/tests/creation.test.cjs": "f841ac16908bad3c89da96323be6a598a0c058f37350614e8d0e94041045fa28",
+      "web/tests/ports.test.cjs": "d5ce5c2b55b09ab8a687ee2020f2cb3a305a602194ec3e110921214a68ade694",
+      "web/tests/vue-fixture.cjs": "843f9d2ddec1438dea2e7df90b3f57478aee7adc78271ec11076043f8d060fb9",
+      "web/vite.config.ts": "995f3fda9a854a4b1394b9518ad6700eec93c59c8069fafa7fbb289e7a6857cc"
+    },
+    "binaryPath": "dist/a45-review-20260913/particeps-agent",
+    "binarySHA256": "db04ab7f0192f2b0fa4df996161643b3cb03f80d6bfacb3e5f609bf9558673d7",
+    "logs": {
+      "core": {
+        "path": "dist/a45-review-20260913/core.log",
+        "sha256": "a9d78b7332f732883905dcf5e78d5a5e0e42063226b1474d41ce12747014155d"
+      },
+      "incusx": {
+        "path": "dist/a45-review-20260913/incusx.log",
+        "sha256": "df1336e9423721bdbde11886903e1692013e1ca2e8b2a520e80c1b4eed28f9e9"
+      },
+      "web-build": {
+        "path": "dist/a45-review-20260913/web-build.log",
+        "sha256": "5d7bc46eb7dd719e422f60fb78c36b35b1ac2b69cf5ff38862271a88c5f5cefc"
+      }
+    }
+  },
+  "review": {
+    "status": "passed",
+    "reviewers": [
+      {
+        "agent": "/root/a45_review_core",
+        "scope": "Core allocation, API, store, and durable SSH operation protection",
+        "status": "passed"
+      },
+      {
+        "agent": "/root/a45_review_ssh",
+        "scope": "SSH provisioning and Incus exec result handling",
+        "status": "passed"
+      },
+      {
+        "agent": "/root/a45_review_web",
+        "scope": "Web creation and port mapping controls",
+        "status": "passed"
+      }
+    ],
+    "resolvedFindings": [
+      {
+        "severity": "P2",
+        "summary": "Web prevented disabling enabled mappings while waiting for an internal address.",
+        "resolution": "Allow disable-only actions in waiting-address; preserve busy, instance-operation, unverified, and reconciliation guards.",
+        "reReview": "passed"
+      },
+      {
+        "severity": "P2",
+        "summary": "Unconfirmed PrepareSSH/StartSSH exec outcomes lacked a durable mutation barrier.",
+        "resolution": "Persist uncertain state before dispatch; clear only after known terminal completion; retain phase and sanitized operation path for unknown outcomes and across database reopen.",
+        "builder": "/root/a45_ssh_fix",
+        "reReview": "passed"
+      }
+    ],
+    "newBlockingFindings": []
+  },
+  "checks": {
+    "webPorts": {
+      "status": "passed",
+      "passed": 11,
+      "failed": 0,
+      "scope": "Targeted ports component behavior; not a real-browser run"
+    },
+    "webBuild": {
+      "status": "passed",
+      "command": "npm run build",
+      "steps": [
+        "vue-tsc --noEmit",
+        "vite build"
+      ],
+      "assets": [
+        "index-CWN5eAUr.js",
+        "index-KVRaOcLY.css"
+      ],
+      "log": {
+        "path": "dist/a45-review-20260913/web-build.log",
+        "sha256": "5d7bc46eb7dd719e422f60fb78c36b35b1ac2b69cf5ff38862271a88c5f5cefc"
+      }
+    },
+    "core": {
+      "status": "passed",
+      "platform": "linux/amd64",
+      "command": "/tmp/particeps-a45-review-zs9ecji7/core.test -test.v -test.timeout 120s",
+      "exitCode": 0,
+      "passedTopLevel": 83,
+      "passedIncludingSubtests": 120,
+      "failed": 0,
+      "skipped": [],
+      "log": {
+        "path": "dist/a45-review-20260913/core.log",
+        "sha256": "a9d78b7332f732883905dcf5e78d5a5e0e42063226b1474d41ce12747014155d"
+      }
+    },
+    "incusx": {
+      "status": "passed",
+      "platform": "linux/amd64",
+      "command": "/tmp/particeps-a45-review-zs9ecji7/incusx.test -test.v -test.timeout 120s",
+      "exitCode": 0,
+      "passedTopLevel": 27,
+      "passedIncludingSubtests": 96,
+      "failed": 0,
+      "skipped": [
+        {
+          "name": "TestIncusReadOnlyIntegration",
+          "reason": "Dedicated Incus socket and guest were not configured."
+        }
+      ],
+      "log": {
+        "path": "dist/a45-review-20260913/incusx.log",
+        "sha256": "df1336e9423721bdbde11886903e1692013e1ca2e8b2a520e80c1b4eed28f9e9"
+      }
+    },
+    "linuxAgentBuild": {
+      "status": "passed",
+      "target": "linux/amd64",
+      "exitCode": 0,
+      "path": "dist/a45-review-20260913/particeps-agent",
+      "sha256": "db04ab7f0192f2b0fa4df996161643b3cb03f80d6bfacb3e5f609bf9558673d7"
+    }
+  },
+  "testIsolation": {
+    "method": "Cross-compiled test binaries used temporary databases, simulated backends, and sshd configuration parsing.",
+    "userInstancesModified": false,
+    "remoteDirectory": "/tmp/particeps-a45-review-zs9ecji7",
+    "cleanup": "Directory membership and log hashes checked, logs downloaded, and remote directory removed.",
+    "localLogsRetained": true
+  },
+  "liveInspection": {
+    "mode": "read-only",
+    "host": "192.168.143.145",
+    "services": {
+      "particeps-agent": "active",
+      "incus": "active",
+      "particeps-vmnet2-forwarding": "active"
+    },
+    "runningAgentSHA256": "4ba29c0d59e8850b79baa6aff8875e8071bd461c13b41632109c6332f74ef375",
+    "runningAgentCandidate": "Historical A5 deployment; not this review candidate",
+    "project": "particeps",
+    "instances": [
+      {
+        "incusName": "p-befae687800f",
+        "state": "Running"
+      },
+      {
+        "incusName": "p-e7ade30abd02",
+        "state": "Running"
+      },
+      {
+        "incusName": "p-232ca9b0caac",
+        "state": "Running"
+      },
+      {
+        "incusName": "p-6d04bc1cdf9e",
+        "state": "Running"
+      }
+    ],
+    "resourceNote": "The latter two instances are subsequent user resources, not A5 test leftovers.",
+    "preservedHistoricalIssue": {
+      "instance": "p-befae687800f",
+      "issue": "Previous needs-reconciliation / uncertain power operation",
+      "databaseStateRecheckedThisReview": false,
+      "protectionClearedThisReview": false
+    },
+    "postTestCleanup": "All three services remained active; running Agent still matched the historical A5 binary."
+  },
+  "historicalEvidence": [
+    "docs/quality/evidence/a4-2026-09-13/verification.json",
+    "docs/quality/evidence/a5-2026-09-13/verification.json"
+  ],
+  "boundaries": {
+    "deployedThisCandidate": false,
+    "pushed": false,
+    "released": false,
+    "realBrowserRetestedThisReview": false,
+    "newSSHOrPortConnectivityTestThisReview": false,
+    "fullInstallerOrGoRaceSuiteRunThisReview": false,
+    "formalFoundationAcceptance": "Managed by Runtime; this scoped review does not mark the 13-item acceptance complete.",
+    "remainingWork": [
+      "A6/A7 shared ingress, conflicts and concurrent allocation, additional reservations, and editing isolation",
+      "A8/A9 lifecycle and deletion isolation, including investigation of the existing guest power result",
+      "A11 continuity while Agent is actually stopped",
+      "InstallRootKey/FilePush existing unconfirmed-write boundary remains a follow-up lead; not repaired or fully verified here",
+      "Full S3 credential policy matrix, public networking, and IPv6 acceptance"
+    ]
+  }
+}

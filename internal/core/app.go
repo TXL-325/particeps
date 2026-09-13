@@ -75,6 +75,7 @@ type CreateReq struct {
 	Password      string  `json:"password"`
 	PasswordLogin *bool   `json:"passwordLogin"`
 	Count         int     `json:"count"`
+	AllocateUDP   bool    `json:"allocateUDP,omitempty"`
 }
 
 func Open(cfg config.Config) (*App, error) {

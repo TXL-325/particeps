@@ -34,6 +34,16 @@ systemctl is-active particeps-agent incus
 - [VMnet2 转发脚本](../../deploy/lab/vmnet2-forwarding.sh)与[服务单元](../../deploy/lab/particeps-vmnet2-forwarding.service)：既有实验的定向转发配置；使用前核对实际接口、地址与防火墙，不能直接作为任意环境的通用规则。
 - [构建与测试](build-and-test.md)：工具链与可选 Incus 检查入口；检查范围遵循[协作约束](../knowledge/verification-and-workflow-constraints.md)。
 
+## 端口映射与防火墙的边界
+
+Incus 的原生 nftables DNAT 和 iptables/nftables 的过滤规则都由 Linux 内核 Netfilter 执行；Agent 不逐包代理。`iptables -t nat -L` 未展示 Incus 原生 nftables 表，不表示映射绕过防火墙。Docker 与 Incus 没有依赖关系，但共用母机网络；Docker 设置的 `FORWARD DROP` 会拒绝在转发路径中未获允许的流量，影响实例入站和出网。
+
+本实验入站允许规则限定 `ens37 → particepsbr0`、原目标 `10.90.0.10/.11/.12`、DNAT 状态及目的网段 `10.80.0.0/24`。它不逐条匹配数据库 `enabled` 或枚举应用端口；实际安装的 DNAT 规则决定哪些端口会被转向实例，最终访问仍需其他过滤规则和实例服务允许。预留但未启用的号码不会因此自动映射。
+
+`particepsbr0 → ens33` 的 `10.80.0.0/24` 规则允许实例普通 IPv4 出网，另允许相应回包。20 个预留号码是入站分配，不是出口端口限制；在同一次过滤链遍历中，把 DROP 追加到已匹配的 ACCEPT 之后不会生效，限制须置于该允许之前或另一处适用的过滤链。
+
+IPv4 iptables 不覆盖 IPv6。2026-09-13 只读核对时，既有桥配置了 `fd42:d79d:a631:31c0::1/64` 和 IPv6 NAT；IPv6 默认路由查询为空，不能据此称 IPv6 已禁用或所有 IPv6 路径均不可达。后续检查仍需重新核对地址、路由及两套过滤规则。
+
 ## 历史环境与证据
 
 [2026-09-11 网络快照](../quality/network-lab-2026-09-11.md)完整保留当时拓扑、IPv4/IPv6 地址、路由、备份位置、临时资源清理和实验结果。[F03 报告](../quality/f03-port-forwarding-2026-09-11.md)记录该环境中的端口实测；后续母机核对见[恢复记录](../quality/native-progress-sync-2026-09-12.md#2026-09-13-恢复与安装规格同步)。

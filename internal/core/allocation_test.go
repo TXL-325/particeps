@@ -19,7 +19,7 @@ func TestConcurrentReservationsKeepWholePortBlocks(t *testing.T) {
 			defer workers.Done()
 			<-start
 			id := fmt.Sprintf("new-%d", index)
-			results <- a.reserveInstance(id, id, id, CreateReq{Image: "alpine", CPUCores: 0.5, MemoryMiB: 128, DiskGiB: 1, StackMode: "v4"}, true, "192.0.2.1", "", "")
+			results <- a.reserveInstance(id, id, id, CreateReq{Image: "alpine", CPUCores: 0.5, MemoryMiB: 128, DiskGiB: 1, StackMode: "v4", AllocateUDP: index == 1}, true, "192.0.2.1", "", "")
 		}(i)
 	}
 	close(start)
@@ -34,7 +34,7 @@ func TestConcurrentReservationsKeepWholePortBlocks(t *testing.T) {
 	if err := a.Store.DB.QueryRow(`SELECT COUNT(*),COUNT(DISTINCT number) FROM ports`).Scan(&rows, &numbers); err != nil {
 		t.Fatal(err)
 	}
-	if rows != 80 || numbers != 40 {
+	if rows != 60 || numbers != 40 {
 		t.Fatalf("partial allocation: rows=%d, numbers=%d", rows, numbers)
 	}
 	if err := a.Store.DB.QueryRow(`SELECT COUNT(*) FROM (SELECT number FROM ports GROUP BY number HAVING COUNT(DISTINCT instance_id)>1)`).Scan(&owners); err != nil {
@@ -50,7 +50,7 @@ func TestReservationRollsBackWhenAnyPortWriteFails(t *testing.T) {
 	if _, err := a.Store.DB.Exec(`CREATE TRIGGER reject_udp BEFORE INSERT ON ports WHEN NEW.proto='udp' BEGIN SELECT RAISE(ABORT,'test failure'); END`); err != nil {
 		t.Fatal(err)
 	}
-	err := a.reserveInstance("new", "new", "new", CreateReq{Image: "alpine", CPUCores: 0.5, MemoryMiB: 128, DiskGiB: 1, StackMode: "v4"}, true, "192.0.2.1", "", "")
+	err := a.reserveInstance("new", "new", "new", CreateReq{Image: "alpine", CPUCores: 0.5, MemoryMiB: 128, DiskGiB: 1, StackMode: "v4", AllocateUDP: true}, true, "192.0.2.1", "", "")
 	if err == nil {
 		t.Fatal("port write failure was ignored")
 	}

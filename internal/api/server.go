@@ -316,12 +316,13 @@ func (s *Server) editPort(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		Target int `json:"target"`
+		Target  *int  `json:"target"`
+		Enabled *bool `json:"enabled"`
 	}
 	if !decodeJSON(w, r, &body) {
 		return
 	}
-	if err := s.App.EditPort(r.PathValue("id"), number, r.PathValue("proto"), body.Target); err != nil {
+	if err := s.App.UpdatePort(r.PathValue("id"), number, r.PathValue("proto"), body.Target, body.Enabled); err != nil {
 		writeErr(w, http.StatusConflict, err.Error())
 		return
 	}

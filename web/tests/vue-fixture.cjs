@@ -58,7 +58,7 @@ const renderer = vue.createRenderer({
   patchProp(node, name, previous, value) { node.props[name] = value; if (name === 'value' || name === 'type') node[name] = value },
 })
 
-function fixture(filename = 'src/views/InstanceDetailView.vue', apiOverrides = {}) {
+function fixture(filename = 'src/views/InstanceDetailView.vue', apiOverrides = {}, globals = {}) {
   const pending = [], calls = [], timers = new Map(), listeners = new Map()
   let timerID = 0
   const fakeWindow = {
@@ -81,7 +81,7 @@ function fixture(filename = 'src/views/InstanceDetailView.vue', apiOverrides = {
     ...apiOverrides,
   }
   const router = { async push(path) { calls.push(['route', path]) } }
-  const Component = loader(api, { window: fakeWindow, document: fakeDocument, router })(filename).default
+  const Component = loader(api, { window: fakeWindow, document: fakeDocument, router, ...globals })(filename).default
   const selected = vue.ref('A')
   const root = { tag: 'root', children: [], parent: null, text: '', props: {} }
   const app = renderer.createApp({ render: () => vue.h(Component, { id: selected.value }) })

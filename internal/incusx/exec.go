@@ -33,15 +33,21 @@ func ExecOperationState(err error) ConfigOperation {
 	return ConfigOperation{}
 }
 
-func (c *Client) Exec(name string, command []string, stdin []byte) (output string, err error) {
+func (c *Client) Exec(name string, command []string, stdin []byte) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	return c.execContext(ctx, name, command, stdin)
+}
+
+// SSH provisioning has its own bounded waits. Keep the normal Exec deadline
+// unchanged for credential writes and other existing callers.
+func (c *Client) execContext(ctx context.Context, name string, command []string, stdin []byte) (output string, err error) {
 	state := ConfigOperation{}
 	defer func() {
 		if err != nil {
 			err = &ExecError{Operation: state, Cause: err}
 		}
 	}()
-	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
-	defer cancel()
 	stream := len(stdin) > 0
 	body := map[string]any{
 		"command":            command,

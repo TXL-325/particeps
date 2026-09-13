@@ -88,6 +88,7 @@ CREATE TABLE IF NOT EXISTS ports (
   proto TEXT NOT NULL,
   listen_ip TEXT NOT NULL,
   target INTEGER NOT NULL,
+  enabled INTEGER NOT NULL DEFAULT 1,
   UNIQUE(number, proto, listen_ip),
   FOREIGN KEY(instance_id) REFERENCES instances(id)
 );
@@ -173,8 +174,17 @@ UPDATE task_items SET result_json='' WHERE CASE WHEN json_valid(result_json)
 	if err != nil {
 		return err
 	}
+	// Keep previously applied mappings enabled when upgrading existing ledgers.
+	if err := s.ensureColumn("ports", "enabled", "INTEGER NOT NULL DEFAULT 1"); err != nil {
+		return err
+	}
 	// Early development databases may already contain the cleanup queue.
-	rows, err := s.DB.Query(`PRAGMA table_info(conntrack_cleanup)`)
+	return s.ensureColumn("conntrack_cleanup", "direct_binding", "INTEGER NOT NULL DEFAULT 0")
+}
+
+// The table, column and definition arguments are schema constants, never input.
+func (s *Store) ensureColumn(table, column, definition string) error {
+	rows, err := s.DB.Query(`PRAGMA table_info(` + table + `)`)
 	if err != nil {
 		return err
 	}
@@ -187,7 +197,7 @@ UPDATE task_items SET result_json='' WHERE CASE WHEN json_valid(result_json)
 			_ = rows.Close()
 			return err
 		}
-		found = found || name == "direct_binding"
+		found = found || name == column
 	}
 	err = rows.Err()
 	_ = rows.Close()
@@ -195,7 +205,7 @@ UPDATE task_items SET result_json='' WHERE CASE WHEN json_valid(result_json)
 		return err
 	}
 	if !found {
-		_, err = s.DB.Exec(`ALTER TABLE conntrack_cleanup ADD COLUMN direct_binding INTEGER NOT NULL DEFAULT 0`)
+		_, err = s.DB.Exec(`ALTER TABLE ` + table + ` ADD COLUMN ` + column + ` ` + definition)
 	}
 	return err
 }

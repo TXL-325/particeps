@@ -1,0 +1,381 @@
+{
+  "date": "2026-09-13",
+  "sourceHead": "49e6a48",
+  "change": "particeps-foundation",
+  "session": "a4-create-flow-20260913",
+  "origin": "http://192.168.143.145:8792",
+  "reproduction": {
+    "secureContext": false,
+    "randomUUID": "undefined",
+    "getRandomValues": "function",
+    "visibleError": "crypto.randomUUID is not a function",
+    "createdTasks": 0
+  },
+  "host": {
+    "os": "Debian 13.6",
+    "kernel": "6.12.107+deb13-amd64",
+    "incus": "6.0.4",
+    "cpuCap": "150000 100000",
+    "memoryMiB": 3883,
+    "storagePool": "particeps-pool",
+    "poolSize": "12GiB",
+    "driver": "lvm",
+    "bridge": "particepsbr0",
+    "bridgeV4": "10.80.0.1/24",
+    "testIngress": "10.90.0.10",
+    "client": "10.90.0.1"
+  },
+  "originalPool": {
+    "ipv4": null,
+    "ipv6": null,
+    "prefixes": null,
+    "natIPv4": "",
+    "nat66": "",
+    "dedicatedV4": null
+  },
+  "originalCounts": {
+    "instances": 0,
+    "tasks": 0,
+    "taskItems": 0,
+    "sessions": 1,
+    "tokens": 0
+  },
+  "backup": "/root/particeps-backups/a4-20260913-1333",
+  "originalBinarySha256": "cdc36cff9f8e6535f3c883155653a70a1e46bd3bf1d7a507d93ec96081a0426b",
+  "preservedInstances": [
+    {
+      "id": "ee3c10e507cb9e0d9219a8224ee1a047",
+      "name": "guest",
+      "incusName": "p-ee3c10e507cb"
+    },
+    {
+      "id": "e21d7245cac43b473c8cb28057fabf23",
+      "name": "guest1",
+      "incusName": "p-e21d7245cac4"
+    }
+  ],
+  "keepConfiguredPool": true,
+  "alpine": {
+    "taskId": "cca0068fe23e15b9714f90d00cd05745",
+    "doubleClickTaskCount": 1,
+    "instances": [
+      {
+        "id": "8273337784b3126ef0328ba4a23dc5ae",
+        "name": "a4-alpine-20260913-1",
+        "incusName": "p-8273337784b3"
+      },
+      {
+        "id": "c5f4009c5f8436eda002323052fd34d1",
+        "name": "a4-alpine-20260913-2",
+        "incusName": "p-c5f4009c5f84"
+      }
+    ],
+    "credentialClaim": {
+      "displayCount": 2,
+      "passwordLengths": [
+        16,
+        16
+      ],
+      "repeatClaimCount": 0,
+      "storedResultLengths": [
+        0,
+        0
+      ],
+      "clearedFromPage": true
+    },
+    "observed": [
+      {
+        "name": "p-8273337784b3",
+        "status": "Running",
+        "managedID": "8273337784b3126ef0328ba4a23dc5ae",
+        "imageOS": "Alpine",
+        "imageRelease": "3.21",
+        "baseImage": "d9a5c450e22d221895c170782ce42c40b8b15fa5e7f4363cdee26104f31a7d80",
+        "actualOS": {
+          "NAME": "Alpine Linux",
+          "ID": "alpine",
+          "VERSION_ID": "3.21.7",
+          "PRETTY_NAME": "Alpine Linux v3.21",
+          "HOME_URL": "https://alpinelinux.org/",
+          "BUG_REPORT_URL": "https://gitlab.alpinelinux.org/alpine/aports/-/issues"
+        },
+        "addresses": [
+          {
+            "interface": "eth0",
+            "addresses": [
+              "10.80.0.79",
+              "fd42:d79d:a631:31c0:1266:6aff:fed9:5645"
+            ]
+          }
+        ]
+      },
+      {
+        "name": "p-c5f4009c5f84",
+        "status": "Running",
+        "managedID": "c5f4009c5f8436eda002323052fd34d1",
+        "imageOS": "Alpine",
+        "imageRelease": "3.21",
+        "baseImage": "d9a5c450e22d221895c170782ce42c40b8b15fa5e7f4363cdee26104f31a7d80",
+        "actualOS": {
+          "NAME": "Alpine Linux",
+          "ID": "alpine",
+          "VERSION_ID": "3.21.7",
+          "PRETTY_NAME": "Alpine Linux v3.21",
+          "HOME_URL": "https://alpinelinux.org/",
+          "BUG_REPORT_URL": "https://gitlab.alpinelinux.org/alpine/aports/-/issues"
+        },
+        "addresses": [
+          {
+            "interface": "eth0",
+            "addresses": [
+              "10.80.0.23",
+              "fd42:d79d:a631:31c0:1266:6aff:fe6c:2533"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "debian": {
+    "taskId": "8810edf9c7d8f8474db4e23f89440c69",
+    "instance": {
+      "id": "87299161764503c65026be069b44291a",
+      "name": "a4-debian-20260913",
+      "incusName": "p-872991617645"
+    },
+    "observed": {
+      "name": "p-872991617645",
+      "status": "Running",
+      "managedID": "87299161764503c65026be069b44291a",
+      "imageOS": "Debian",
+      "imageRelease": "trixie",
+      "baseImage": "e97f9d843aff38c6acadcbfab50ffec39136f8c90f5d852b04309337bd74998e",
+      "actualOS": {
+        "PRETTY_NAME": "Debian GNU/Linux 13 (trixie)",
+        "NAME": "Debian GNU/Linux",
+        "VERSION_ID": "13",
+        "VERSION": "13 (trixie)",
+        "VERSION_CODENAME": "trixie",
+        "DEBIAN_VERSION_FULL": "13.7",
+        "ID": "debian",
+        "HOME_URL": "https://www.debian.org/",
+        "SUPPORT_URL": "https://www.debian.org/support",
+        "BUG_REPORT_URL": "https://bugs.debian.org/"
+      },
+      "rootPasswordSetAndUnlocked": true,
+      "cloudInit": {
+        "exitCode": 0,
+        "status": "done",
+        "extendedStatus": "done",
+        "errors": []
+      },
+      "addresses": [
+        {
+          "interface": "eth0",
+          "addresses": [
+            "10.80.0.34",
+            "fd42:d79d:a631:31c0:1266:6aff:fe5c:29d1"
+          ]
+        }
+      ]
+    },
+    "credentialClaim": {
+      "displayCount": 1,
+      "passwordLength": 16,
+      "repeatClaimCount": 0,
+      "storedResultLength": 0,
+      "clearedFromPage": true
+    }
+  },
+  "candidateSha256": "0985b62c2d5e65471acc2e250e745f8a28e31ae0e9802fca6d7667a5d14cd0bc",
+  "sourceFiles": [
+    {
+      "path": "web/src/utils/requestKey.ts",
+      "sha256": "cf70084f8efa76ca178f8a34eddd2dffe13f0e88cc2afd3ffffa196f08e69d9a"
+    },
+    {
+      "path": "web/src/composables/useBatchCreate.ts",
+      "sha256": "41f17982f0c445c669b9740ddda48f642f3fda73765174732cb3c04c5614e421"
+    },
+    {
+      "path": "web/src/views/InstancesView.vue",
+      "sha256": "dc4f6e60267b6e2a14d0d2d6c50a54ccf7b4e0740cb6fa91e80d32052c6f8a2b"
+    },
+    {
+      "path": "web/src/components/instances/BatchCreateForm.vue",
+      "sha256": "51a6e5a6d38bb0052e050c0a983e4baa37dbc5cf287bf9f6dcae7f6bfd854d9d"
+    },
+    {
+      "path": "web/tests/creation.test.cjs",
+      "sha256": "c4ecb51dfd9861033f98066ec9f7bf56dc0110a11d90fce04cfddb7398ad7ea6"
+    },
+    {
+      "path": "web/tests/vue-fixture.cjs",
+      "sha256": "843f9d2ddec1438dea2e7df90b3f57478aee7adc78271ec11076043f8d060fb9"
+    },
+    {
+      "path": "internal/web/dist/index.html",
+      "sha256": "2b57ad0cbcbd5509efa040220ef0ac7143d5406b9588140ff31cff1d90c9358d"
+    },
+    {
+      "path": "internal/web/dist/assets/index-B2zARH7-.js",
+      "sha256": "41d0f72da861d434fe021d4bebc6bf5617e2cdf5fd36e87f60b4c8792733dad5"
+    },
+    {
+      "path": "internal/web/dist/assets/index-Bfw3hQ8t.css",
+      "sha256": "d638aef283f403ae41b47be6a73382206a75d3d4ca29874418f5547ef3618ca6"
+    }
+  ],
+  "replay": [
+    {
+      "image": "alpine/3.21/cloud",
+      "status": 202,
+      "expectedTask": "cca0068fe23e15b9714f90d00cd05745",
+      "taskId": "cca0068fe23e15b9714f90d00cd05745",
+      "sameTask": true,
+      "taskStatus": "ok"
+    },
+    {
+      "image": "debian/13/cloud",
+      "status": 202,
+      "expectedTask": "8810edf9c7d8f8474db4e23f89440c69",
+      "taskId": "8810edf9c7d8f8474db4e23f89440c69",
+      "sameTask": true,
+      "taskStatus": "ok"
+    }
+  ],
+  "cleanup": {
+    "api": {
+      "deleted": [
+        {
+          "id": "8273337784b3126ef0328ba4a23dc5ae",
+          "name": "a4-alpine-20260913-1",
+          "status": 200,
+          "result": {
+            "ok": "1"
+          }
+        },
+        {
+          "id": "c5f4009c5f8436eda002323052fd34d1",
+          "name": "a4-alpine-20260913-2",
+          "status": 200,
+          "result": {
+            "ok": "1"
+          }
+        },
+        {
+          "id": "87299161764503c65026be069b44291a",
+          "name": "a4-debian-20260913",
+          "status": 200,
+          "result": {
+            "ok": "1"
+          }
+        }
+      ],
+      "remainingTestIds": [],
+      "preserved": [
+        {
+          "id": "ee3c10e507cb9e0d9219a8224ee1a047",
+          "name": "guest",
+          "status": "running",
+          "networkStatus": "ready",
+          "identityAndPortsUnchanged": true
+        },
+        {
+          "id": "e21d7245cac43b473c8cb28057fabf23",
+          "name": "guest1",
+          "status": "running",
+          "networkStatus": "ready",
+          "identityAndPortsUnchanged": true
+        }
+      ],
+      "remainingNames": [
+        "guest",
+        "guest1"
+      ]
+    },
+    "system": [
+      {
+        "remainingTestInstances": 0,
+        "relatedRows": {
+          "ports": 0,
+          "resource_updates": 0,
+          "password_updates": 0,
+          "instance_network": 0,
+          "forward_writes": 0,
+          "conntrack_cleanup": 0,
+          "task_items": 3,
+          "traffic": 0
+        },
+        "remainingIncusNames": [
+          "p-e21d7245cac4",
+          "p-ee3c10e507cb"
+        ],
+        "remainingTestVolumes": [],
+        "credentialResultLengths": [
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "agent": "active",
+        "incus": "active",
+        "pid": "43462",
+        "runningSha256": "0985b62c2d5e65471acc2e250e745f8a28e31ae0e9802fca6d7667a5d14cd0bc"
+      }
+    ]
+  },
+  "review": {
+    "builder": "/root/a4_create_builder",
+    "reviewer": "/root/a4_create_review",
+    "status": "passed",
+    "resolvedFinding": "Preserve request keys across A -> rejected B -> A retries within the page lifetime."
+  },
+  "checks": [
+    {
+      "name": "Final creation regression tests",
+      "command": "node --test tests/creation.test.cjs",
+      "result": "passed",
+      "tests": 10
+    },
+    {
+      "name": "Existing behavior regression tests",
+      "command": "node --test tests/creation.test.cjs tests/behavior.test.cjs",
+      "result": "passed",
+      "note": "Initial combined run 25 tests; 16 unchanged behavior tests reused after the focused pending-key repair."
+    },
+    {
+      "name": "Settings regression tests",
+      "command": "node --test tests/settings.test.cjs",
+      "result": "passed",
+      "tests": 12
+    },
+    {
+      "name": "Vue type check",
+      "command": "npx --no-install vue-tsc --noEmit",
+      "result": "passed"
+    },
+    {
+      "name": "Final web build",
+      "command": "npm.cmd run build",
+      "result": "passed",
+      "scriptAsset": "index-B2zARH7-.js"
+    },
+    {
+      "name": "Linux amd64 build",
+      "command": "GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags=\"-s -w\" -o dist/a4-20260913/particeps-agent ./cmd/particeps-agent",
+      "result": "passed"
+    },
+    {
+      "name": "Diff whitespace check",
+      "command": "git diff --check",
+      "result": "passed"
+    },
+    {
+      "name": "Unauthenticated create",
+      "result": "passed",
+      "httpStatus": 401
+    }
+  ]
+}

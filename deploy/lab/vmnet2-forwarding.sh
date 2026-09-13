@@ -15,7 +15,15 @@ rule() {
     fi
 }
 
-for ingress in 10.90.0.11 10.90.0.12; do
+# Documented lab topology: ens33 is the uplink for SSH package downloads and
+# ordinary guest IPv4 egress; only established or related traffic may return.
+rule -i particepsbr0 -o ens33 -s 10.80.0.0/24 \
+    -m comment --comment particeps-vmnet2-lab -j ACCEPT
+rule -i ens33 -o particepsbr0 -d 10.80.0.0/24 \
+    -m conntrack --ctstate ESTABLISHED,RELATED \
+    -m comment --comment particeps-vmnet2-lab -j ACCEPT
+
+for ingress in 10.90.0.10 10.90.0.11 10.90.0.12; do
     rule -i ens37 -o particepsbr0 -d 10.80.0.0/24 \
         -m conntrack --ctstate DNAT --ctdir ORIGINAL --ctorigdst "$ingress" \
         -m comment --comment particeps-vmnet2-lab -j ACCEPT

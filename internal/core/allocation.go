@@ -45,13 +45,18 @@ func (a *App) reserveInstance(id, name, incusName string, req CreateReq, pwLogin
 	if listenIP == "" {
 		return fmt.Errorf("no selected ingress address")
 	}
+	protocols := []string{"tcp"}
+	if req.AllocateUDP {
+		protocols = append(protocols, "udp")
+	}
 	for index, number := range ports {
-		for _, proto := range []string{"tcp", "udp"} {
+		for _, proto := range protocols {
 			target := number
-			if index == 0 && proto == "tcp" {
+			enabled := index == 0 && proto == "tcp"
+			if enabled {
 				target = 22
 			}
-			if _, err := tx.Exec(`INSERT INTO ports(instance_id,number,proto,listen_ip,target) VALUES(?,?,?,?,?)`, id, number, proto, listenIP, target); err != nil {
+			if _, err := tx.Exec(`INSERT INTO ports(instance_id,number,proto,listen_ip,target,enabled) VALUES(?,?,?,?,?,?)`, id, number, proto, listenIP, target, enabled); err != nil {
 				return err
 			}
 		}

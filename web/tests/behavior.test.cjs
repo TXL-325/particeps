@@ -177,9 +177,9 @@ test('port edit sends the selected number and protocol and preserves its number'
   let changed
   const view = fixture('src/views/InstanceDetailView.vue', {
     async instance() { return { ...saved, ports: saved.ports.map(p => ({ ...p })) } },
-    async editPort(id, number, proto, target) {
-      changed = { id, number, proto, target }
-      saved.ports[0].target = target
+    async editPort(id, number, proto, patch) {
+      changed = { id, number, proto, patch: { ...patch } }
+      saved.ports[0].target = patch.target
     },
   })
   await tick()
@@ -188,7 +188,7 @@ test('port edit sends the selected number and protocol and preserves its number'
   nodes(view.root, node => node.props['aria-label'] === '20000 tcp 目标端口')[0].props.onInput({ target: { value: '2222' } })
   nodes(view.root, node => node.tag === 'button' && node.text === '保存目标')[0].props.onClick()
   await tick()
-  assert.deepEqual(changed, { id: 'A', number: 20000, proto: 'tcp', target: 2222 })
+  assert.deepEqual(changed, { id: 'A', number: 20000, proto: 'tcp', patch: { target: 2222 } })
   assert.ok(text(view.root).includes('2222'))
   assert.ok(text(view.root).includes('20000'))
   assert.ok(!text(view.root).includes('（SSH）'))

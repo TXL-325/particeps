@@ -2,6 +2,7 @@ package core
 
 import (
 	"bufio"
+	"database/sql"
 	"errors"
 	"fmt"
 	"os"
@@ -141,15 +142,15 @@ func (a *App) checkHostPortConflicts(ports []Port) error {
 		return err
 	}
 	for _, p := range ports {
-		if used[p.Number] {
+		if p.Enabled && used[p.Number] {
 			return fmt.Errorf("host service now occupies port %d; reservation kept pending", p.Number)
 		}
 	}
 	return nil
 }
 
-// AddPort reserves both protocols in one transaction before contacting Incus.
-// If application fails the reservation and pending state survive a restart.
+// AddPort only reserves a number; enabling a mapping is a separate operation.
+// Instances that opted into UDP also receive a disabled UDP reservation.
 func (a *App) AddPort(id string, number int) error {
 	a.allocationMu.Lock()
 	defer a.allocationMu.Unlock()
@@ -190,8 +191,16 @@ func (a *App) AddPort(id string, number int) error {
 		return err
 	}
 	defer tx.Rollback()
-	for _, proto := range []string{"tcp", "udp"} {
-		if _, err := tx.Exec(`INSERT INTO ports(instance_id,number,proto,listen_ip,target) VALUES(?,?,?,?,?)`, n.ID, number, proto, n.Listen, number); err != nil {
+	var allocateUDP bool
+	if err := tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM ports WHERE instance_id=? AND proto='udp')`, n.ID).Scan(&allocateUDP); err != nil {
+		return err
+	}
+	protocols := []string{"tcp"}
+	if allocateUDP {
+		protocols = append(protocols, "udp")
+	}
+	for _, proto := range protocols {
+		if _, err := tx.Exec(`INSERT INTO ports(instance_id,number,proto,listen_ip,target,enabled) VALUES(?,?,?,?,?,0)`, n.ID, number, proto, n.Listen, number); err != nil {
 			return err
 		}
 	}
@@ -205,8 +214,17 @@ func (a *App) AddPort(id string, number int) error {
 }
 
 func (a *App) EditPort(id string, number int, proto string, target int) error {
-	if (proto != "tcp" && proto != "udp") || number < 1 || number > 65535 || target < 1 || target > 65535 {
+	return a.UpdatePort(id, number, proto, &target, nil)
+}
+
+// Omitted fields preserve the stored value. Editing a reserved port's target
+// must not expose the service until the operator explicitly enables it.
+func (a *App) UpdatePort(id string, number int, proto string, target *int, enabled *bool) error {
+	if (proto != "tcp" && proto != "udp") || number < 1 || number > 65535 || (target != nil && (*target < 1 || *target > 65535)) {
 		return fmt.Errorf("invalid port number, protocol, or target")
+	}
+	if target == nil && enabled == nil {
+		return fmt.Errorf("a target or enabled state is required")
 	}
 	a.allocationMu.Lock()
 	defer a.allocationMu.Unlock()
@@ -215,14 +233,38 @@ func (a *App) EditPort(id string, number int, proto string, target int) error {
 		return err
 	}
 	if n.Status == "pending" || n.Uncertain {
-		return fmt.Errorf("resolve the pending port configuration before editing a target")
+		return fmt.Errorf("resolve the pending port configuration before editing a mapping")
+	}
+	pending, err := a.addressWritePending(n.Listen)
+	if err != nil {
+		return err
+	}
+	if pending {
+		return fmt.Errorf("ingress address has an unfinished write; reconciliation required")
 	}
 	tx, err := a.Store.DB.Begin()
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
-	result, err := tx.Exec(`UPDATE ports SET target=? WHERE instance_id=? AND number=? AND proto=?`, target, n.ID, number, proto)
+	var nextTarget int
+	var nextEnabled bool
+	if err := tx.QueryRow(`SELECT target,enabled FROM ports WHERE instance_id=? AND number=? AND proto=?`, n.ID, number, proto).Scan(&nextTarget, &nextEnabled); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("port does not belong to this instance")
+		}
+		return err
+	}
+	if target != nil {
+		nextTarget = *target
+	}
+	if enabled != nil {
+		nextEnabled = *enabled
+	}
+	if nextEnabled && (nextTarget < 1 || nextTarget > 65535) {
+		return fmt.Errorf("an enabled mapping requires a valid target port")
+	}
+	result, err := tx.Exec(`UPDATE ports SET target=?,enabled=? WHERE instance_id=? AND number=? AND proto=?`, nextTarget, nextEnabled, n.ID, number, proto)
 	if err != nil {
 		return err
 	}

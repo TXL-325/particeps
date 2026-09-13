@@ -168,8 +168,13 @@ func networkTestApp(t *testing.T) (*App, *forwardBackend) {
 func reserveNetworkGuest(t *testing.T, a *App, b *forwardBackend, id, address string) {
 	t.Helper()
 	b.addresses["p-"+id] = address
-	err := a.reserveInstance(id, id, "p-"+id, CreateReq{Image: "alpine", CPUCores: 0.5, MemoryMiB: 128, DiskGiB: 1, StackMode: "v4"}, true, "192.0.2.1", "", "")
+	err := a.reserveInstance(id, id, "p-"+id, CreateReq{Image: "alpine", CPUCores: 0.5, MemoryMiB: 128, DiskGiB: 1, StackMode: "v4", AllocateUDP: true}, true, "192.0.2.1", "", "")
 	if err != nil {
+		t.Fatal(err)
+	}
+	// Exercise upgraded instances whose original TCP and UDP rules all remain
+	// enabled. The new reservation defaults have their own coverage in ports_test.
+	if _, err := a.Store.DB.Exec(`UPDATE ports SET enabled=1 WHERE instance_id=?`, id); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -356,6 +361,10 @@ func TestAppendEditAndAddressRefreshKeepOwnershipAndTargets(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := a.EditPort("a", 20002, "tcp", 8080); err != nil {
+		t.Fatal(err)
+	}
+	enabled := true
+	if err := a.UpdatePort("a", 20002, "tcp", nil, &enabled); err != nil {
 		t.Fatal(err)
 	}
 	if err := a.Power("a", "stop", false); err != nil {

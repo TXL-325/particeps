@@ -45,7 +45,8 @@ export function usePortActions(id: () => string, callbacks: { invalidate: () => 
   return {
     busy: readonly(busy), error: readonly(error), confirmed: readonly(confirmed),
     add: (number: number) => run(key => api.addPort(key, number)),
-    edit: (number: number, proto: string, target: number) => run(key => api.editPort(key, number, proto, target)),
+    edit: (number: number, proto: string, target: number) => run(key => api.editPort(key, number, proto, { target })),
+    toggle: (number: number, proto: string, enabled: boolean) => run(key => api.editPort(key, number, proto, { enabled })),
     sync: () => run(key => api.syncPorts(key)),
     refresh: () => run(),
   }

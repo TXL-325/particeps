@@ -91,7 +91,7 @@ func (a *App) ResetPassword(id, password string) (string, error) {
 		return "", err
 	}
 	if n.Uncertain {
-		return "", fmt.Errorf("an earlier power or forward operation needs reconciliation before changing the password")
+		return "", fmt.Errorf("an earlier instance operation needs reconciliation before changing the password")
 	}
 	if err := a.reconcilePasswordOperation(id); err != nil {
 		return "", err

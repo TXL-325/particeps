@@ -1,6 +1,7 @@
 package core
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -41,7 +42,7 @@ type Instance struct {
 	TxBps          *float64 `json:"txBps"`
 	CPUQuality     string   `json:"cpuQuality"`
 	NetworkQuality string   `json:"networkQuality"`
-	Ports          []Port   `json:"ports,omitempty"`
+	Ports          []Port   `json:"ports"`
 }
 
 type Port struct {
@@ -51,6 +52,7 @@ type Port struct {
 	Proto         string `json:"proto"`
 	ListenIP      string `json:"listenIp"`
 	Target        int    `json:"target"`
+	Enabled       bool   `json:"enabled"`
 }
 
 type Task struct {
@@ -69,8 +71,15 @@ type TaskItem struct {
 	CredentialAvailable bool   `json:"credentialAvailable,omitempty"`
 }
 
-func (a *App) ListInstances() ([]Instance, error) {
-	rows, err := a.Store.DB.Query(`SELECT id,name,incus_name,image,cpu_cores,cpu_pin,memory_mib,disk_gib,bandwidth_mbps,stack_mode,desired_power,nat_ipv4,dedicated_ipv4,ipv6,ipv6_mode,
+// Read the desired mappings and their application status in one short snapshot.
+// Incus and metrics calls happen only after committing and releasing the reader.
+func (a *App) instanceSnapshot() ([]Instance, error) {
+	tx, err := a.Store.DB.BeginTx(context.Background(), &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+	rows, err := tx.Query(`SELECT id,name,incus_name,image,cpu_cores,cpu_pin,memory_mib,disk_gib,bandwidth_mbps,stack_mode,desired_power,nat_ipv4,dedicated_ipv4,ipv6,ipv6_mode,
 		EXISTS(SELECT 1 FROM resource_updates WHERE instance_id=instances.id),
 		CASE WHEN EXISTS(SELECT 1 FROM forward_writes w WHERE w.listen_address=instances.nat_ipv4)
 		THEN 'needs-reconciliation' ELSE COALESCE((SELECT status FROM instance_network WHERE instance_id=instances.id),'unconfigured') END,
@@ -79,7 +88,8 @@ func (a *App) ListInstances() ([]Instance, error) {
 		return nil, err
 	}
 	defer rows.Close()
-	var out []Instance
+	out := []Instance{}
+	indexByID := map[string]int{}
 	for rows.Next() {
 		var in Instance
 		var pending bool
@@ -90,6 +100,50 @@ func (a *App) ListInstances() ([]Instance, error) {
 		if pending {
 			in.ResourceStatus = "needs-reconciliation"
 		}
+		in.Ports = []Port{}
+		indexByID[in.ID] = len(out)
+		out = append(out, in)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	ports, err := tx.Query(`SELECT instance_id,number,proto,listen_ip,target,enabled FROM ports ORDER BY instance_id,number,proto`)
+	if err != nil {
+		return nil, err
+	}
+	defer ports.Close()
+	for ports.Next() {
+		var id string
+		var p Port
+		if err := ports.Scan(&id, &p.Number, &p.Proto, &p.ListenIP, &p.Target, &p.Enabled); err != nil {
+			return nil, err
+		}
+		if index, ok := indexByID[id]; ok {
+			out[index].Ports = append(out[index].Ports, p)
+		}
+	}
+	if err := ports.Err(); err != nil {
+		return nil, err
+	}
+	if err := ports.Close(); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (a *App) ListInstances() ([]Instance, error) {
+	out, err := a.instanceSnapshot()
+	if err != nil {
+		return nil, err
+	}
+	for i := range out {
+		in := &out[i]
 		if st, err := a.Incus.GetState(in.IncusName); err == nil {
 			in.Status = strings.ToLower(st.Status)
 			in.MemUsed = st.Memory.Usage
@@ -106,10 +160,6 @@ func (a *App) ListInstances() ([]Instance, error) {
 		if tx.Valid && in.NetworkQuality == "ok" {
 			in.TxBps = &tx.Float64
 		}
-		out = append(out, in)
-	}
-	if out == nil {
-		out = []Instance{}
 	}
 	return out, nil
 }
@@ -121,23 +171,22 @@ func (a *App) GetInstance(id string) (Instance, []Port, error) {
 	}
 	for _, in := range list {
 		if in.ID == id || in.Name == id {
-			ports, err := a.instancePorts(in.ID)
-			return in, ports, err
+			return in, in.Ports, nil
 		}
 	}
 	return Instance{}, nil, fmt.Errorf("instance not found")
 }
 
 func (a *App) instancePorts(id string) ([]Port, error) {
-	rows, err := a.Store.DB.Query(`SELECT number, proto, listen_ip, target FROM ports WHERE instance_id=? ORDER BY number, proto`, id)
+	rows, err := a.Store.DB.Query(`SELECT number, proto, listen_ip, target, enabled FROM ports WHERE instance_id=? ORDER BY number, proto`, id)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var out []Port
+	out := []Port{}
 	for rows.Next() {
 		var p Port
-		if err := rows.Scan(&p.Number, &p.Proto, &p.ListenIP, &p.Target); err != nil {
+		if err := rows.Scan(&p.Number, &p.Proto, &p.ListenIP, &p.Target, &p.Enabled); err != nil {
 			return nil, err
 		}
 		out = append(out, p)
@@ -316,7 +365,12 @@ func (a *App) runCreateItem(taskID, name string, req CreateReq) {
 		return
 	}
 	plain := req.Password
-	if plain == "" && pwLogin {
+	if !pwLogin {
+		// Unlock the image's root account for public-key authentication without
+		// assigning an empty password. This value is never returned to the user;
+		// SSH still explicitly disables every password authentication method.
+		plain = auth.NewTokenPlain()
+	} else if plain == "" {
 		plain = auth.NewTokenPlain()[:16]
 	}
 	pool := a.Pool()
@@ -380,13 +434,15 @@ func (a *App) runCreateItem(taskID, name string, req CreateReq) {
 		set("failed", "start", err.Error(), id, "")
 		return
 	}
-	time.Sleep(3 * time.Second)
-	if pwLogin && plain != "" {
-		set("running", "password", "", id, "")
-		if err := a.setInstancePassword(id, incusName, plain); err != nil {
-			set("failed", "password", err.Error(), id, "")
-			return
-		}
+	set("running", "ssh", "", id, "")
+	if err := a.provisionSSH(id, "prepare-ssh", func() error { return a.Incus.PrepareSSH(incusName, pwLogin) }); err != nil {
+		set("failed", "ssh", err.Error(), id, "")
+		return
+	}
+	set("running", "password", "", id, "")
+	if err := a.setInstancePassword(id, incusName, plain); err != nil {
+		set("failed", "password", err.Error(), id, "")
+		return
 	}
 	if req.SSHPubKey != "" {
 		set("running", "ssh", "", id, "")
@@ -394,6 +450,11 @@ func (a *App) runCreateItem(taskID, name string, req CreateReq) {
 			set("failed", "ssh", err.Error(), id, "")
 			return
 		}
+	}
+	set("running", "ssh", "", id, "")
+	if err := a.provisionSSH(id, "start-ssh", func() error { return a.Incus.StartSSH(incusName, pwLogin) }); err != nil {
+		set("failed", "ssh", err.Error(), id, "")
+		return
 	}
 	if req.StackMode != "v6" && nat4 != "" {
 		set("running", "forwards", "", id, "")
@@ -493,7 +554,7 @@ func (a *App) Power(id, action string, force bool) error {
 		return fmt.Errorf("unsupported power action")
 	}
 	if n.Uncertain {
-		return fmt.Errorf("an earlier forward write needs reconciliation before changing power")
+		return fmt.Errorf("an earlier instance operation needs reconciliation before changing power")
 	}
 	desired := "running"
 	if action == "stop" {
@@ -558,7 +619,7 @@ func (a *App) DeleteInstance(id string) error {
 		return err
 	}
 	if n.Uncertain {
-		return fmt.Errorf("cannot delete while a forward write may still be active; manual reconciliation required")
+		return fmt.Errorf("cannot delete while an earlier instance operation may still be active; manual reconciliation required")
 	}
 	creating, err := a.instanceCreating(n.ID)
 	if err != nil {

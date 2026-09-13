@@ -21,6 +21,8 @@ type IncusBackend interface {
 	GetForward(string, string) (incusx.Forward, string, error)
 	CreateForward(string, incusx.Forward) error
 	UpdateForward(string, incusx.Forward, string) error
+	PrepareSSH(string, bool) error
+	StartSSH(string, bool) error
 	SetRootPassword(string, string) error
 	InstallRootKey(string, string) error
 }

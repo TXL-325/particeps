@@ -41,8 +41,8 @@ export const api = {
   password: (id: string) => req<{ password: string }>(`/api/v1/instances/${id}/password`, { method: 'POST', body: '{}' }),
   addPort: (id: string, number: number) =>
     req<Instance>(`/api/v1/instances/${encodeURIComponent(id)}/ports`, { method: 'POST', body: JSON.stringify({ number }) }),
-  editPort: (id: string, number: number, proto: string, target: number) =>
-    req<Instance>(`/api/v1/instances/${encodeURIComponent(id)}/ports/${number}/${encodeURIComponent(proto)}`, { method: 'PATCH', body: JSON.stringify({ target }) }),
+  editPort: (id: string, number: number, proto: string, patch: PortPatch) =>
+    req<Instance>(`/api/v1/instances/${encodeURIComponent(id)}/ports/${number}/${encodeURIComponent(proto)}`, { method: 'PATCH', body: JSON.stringify(patch) }),
   syncPorts: (id: string) =>
     req<Instance>(`/api/v1/instances/${encodeURIComponent(id)}/ports/sync`, { method: 'POST', body: '{}' }),
   processes: (id: string, signal?: AbortSignal) => req<{ instanceId: string; processes: Proc[] }>(`/api/v1/instances/${encodeURIComponent(id)}/processes`, { signal }),
@@ -58,7 +58,8 @@ export const api = {
 
 export interface NetAddr { ip: string; family: string; prefix: number; global: boolean; interface: string; kind: string }
 export interface Pool { ipv4: string[]; ipv6: string[]; prefixes: string[]; natIPv4: string; nat66: string; dedicatedV4: string[] }
-export interface Port { number: number; proto: string; listenIp: string; target: number }
+export interface Port { number: number; proto: string; listenIp: string; target: number; enabled?: boolean }
+export interface PortPatch { target?: number; enabled?: boolean }
 export interface Instance {
   id: string; name: string; image: string; cpuCores: number; memoryMib: number; diskGib: number
   stackMode: string; desiredPower: string; status: string; cpuUsed: number; memUsed: number

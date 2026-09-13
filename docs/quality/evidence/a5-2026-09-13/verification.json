@@ -1,0 +1,445 @@
+{
+  "date": "2026-09-13",
+  "baseline": {
+    "host": "192.168.143.145",
+    "ingress": "10.90.0.10",
+    "windowsClient": "10.90.0.1",
+    "instances": [
+      {
+        "id": "befae687800fd3170802cd0cd9e38d03",
+        "name": "guest",
+        "incusName": "p-befae687800f",
+        "status": "running",
+        "networkStatus": "needs-reconciliation",
+        "notes": "Pre-existing uncertain power operation. Preserved."
+      },
+      {
+        "id": "e7ade30abd02c8520d3ef8af82ac4440",
+        "name": "guest4",
+        "incusName": "p-e7ade30abd02",
+        "status": "running",
+        "networkStatus": "ready",
+        "ports": "20020-20039"
+      }
+    ]
+  },
+  "backup": "/root/particeps-backups/a5-20260913-153837",
+  "existingGuestSSH": {
+    "before": {
+      "windowsConnection": "timeout",
+      "hostToContainer22": "connection refused",
+      "sshServerInstalled": false,
+      "dockerForwardPolicy": "DROP",
+      "dockerUserRules": 0
+    },
+    "afterFirewall": {
+      "windowsConnection": "ECONNREFUSED",
+      "alpineRepositoryReachable": true
+    },
+    "afterSSH": {
+      "clientOS": "Windows",
+      "target": "10.90.0.10:20020",
+      "username": "root",
+      "authenticated": true,
+      "hostKeyVerified": true,
+      "hostKeySHA256": "i04q4DavGAYx85kJsvHGs9e+x4GlLfiA9svq3BzVzZg",
+      "exitCode": 0,
+      "output": "p-e7ade30abd02\n0\n3.21.7",
+      "elapsedSeconds": 0.2
+    },
+    "passwordRotated": false,
+    "service": "OpenSSH 9.9_p2 / OpenRC enabled default"
+  },
+  "frontend": {
+    "tests": 47,
+    "typecheck": "passed",
+    "review": "passed - /root/a5_independent_review first stage",
+    "assets": [
+      "index-BCHlb2mT.css",
+      "index-D0hUPJy-.js"
+    ]
+  },
+  "deployment": {
+    "sha256": "4ba29c0d59e8850b79baa6aff8875e8071bd461c13b41632109c6332f74ef375",
+    "pid": 54246,
+    "oldPortRowsPreserved": 80,
+    "oldForwardRulesPreserved": 40
+  },
+  "review": {
+    "status": "passed",
+    "reviewer": "/root/a5_independent_review",
+    "resolvedFinding": "P2 inconsistent port/status snapshots, repaired with a short read-only transaction.",
+    "incremental": "passed: support observed cloud-init not started waiting state; only one production line changed."
+  },
+  "checks": {
+    "core": {
+      "passed": 80
+    },
+    "api": {
+      "passed": 14,
+      "fixtureRetry": "Two source/document checks required server.go and openapi.yaml in their original directory layout; only these were rerun and passed."
+    },
+    "incusx": {
+      "passed": 24,
+      "skipped": [
+        "TestIncusReadOnlyIntegration"
+      ]
+    },
+    "store": {
+      "status": "passed",
+      "platform": "Windows"
+    },
+    "frontend": {
+      "passed": 47,
+      "typecheck": "passed",
+      "build": "passed"
+    },
+    "linuxAgentBuild": "passed"
+  },
+  "liveRepair": {
+    "firstTestTask": "2cec6a2cb59afd0c44e2120e6b4b4c7f",
+    "firstTestInstance": "c855cf741752f2fabf65986aaec730a4",
+    "failure": "cloud-init initial not started was unrecognized",
+    "forwardInstalled": false,
+    "testInstanceDeleted": true,
+    "targetedCloudInitRegression": "2 PASS including real status JSON"
+  },
+  "created": [
+    {
+      "name": "a5-tcp",
+      "id": "9d3723cace992b6e0a1f3d8183e6beb6",
+      "incusName": "p-9d3723cace99",
+      "task": "cdfb2cde7a5abbf8db719cfc6a2e2dac",
+      "taskStatus": "ok/done",
+      "address": "10.80.0.184",
+      "range": [
+        20040,
+        20059
+      ],
+      "numberCount": 20,
+      "tcpReservations": 20,
+      "udpReservations": 0,
+      "initialActiveMappings": [
+        {
+          "proto": "tcp",
+          "port": 20040,
+          "target": 22
+        }
+      ],
+      "login": "publickey-only",
+      "passwordAuthenticationRejected": true
+    },
+    {
+      "name": "a5-udp",
+      "id": "9fdb93731196fdcbb23508a3b054e111",
+      "incusName": "p-9fdb93731196",
+      "task": "5fa3d98ed4c0eb1f02c11e7c3627ba41",
+      "taskStatus": "ok/done",
+      "address": "10.80.0.224",
+      "range": [
+        20060,
+        20079
+      ],
+      "numberCount": 20,
+      "tcpReservations": 20,
+      "udpReservations": 20,
+      "initialActiveMappings": [
+        {
+          "proto": "tcp",
+          "port": 20060,
+          "target": 22
+        }
+      ],
+      "login": "password",
+      "initialCredentialClaimedAndCleared": true
+    }
+  ],
+  "sshChecks": [
+    {
+      "name": "a5-tcp",
+      "clientOS": "Windows",
+      "target": "10.90.0.10:20040",
+      "authentication": "publickey",
+      "authenticated": true,
+      "hostKeyVerified": true,
+      "exitCode": 0,
+      "output": "p-9d3723cace99\n0\nNAME=\"Alpine Linux\"\nID=alpine\nVERSION_ID=3.21.7\nPRETTY_NAME=\"Alpine Linux v3.21\"\nHOME_URL=\"https://alpinelinux.org/\"\nBUG_REPORT_URL=\"https://gitlab.alpinelinux.org/alpine/aports/-/issues\"\n"
+    },
+    {
+      "name": "a5-udp",
+      "clientOS": "Windows",
+      "target": "10.90.0.10:20060",
+      "authentication": "password",
+      "authenticated": true,
+      "hostKeyVerified": true,
+      "exitCode": 0,
+      "output": "p-9fdb93731196\n0\nPRETTY_NAME=\"Debian GNU/Linux 13 (trixie)\"\nNAME=\"Debian GNU/Linux\"\nVERSION_ID=\"13\"\nVERSION=\"13 (trixie)\"\nVERSION_CODENAME=trixie\nDEBIAN_VERSION_FULL=13.7\nID=debian\nHOME_URL=\"https://www.debian.org/\"\nSUPPORT_URL=\"https://www.debian.org/support\"\nBUG_REPORT_URL=\"https://bugs.debian.org/\"\n"
+    },
+    {
+      "name": "a5-tcp",
+      "passwordRejected": true,
+      "allowedMethods": [
+        "publickey"
+      ]
+    }
+  ],
+  "mappingChecks": {
+    "via": "actual browser controls + Windows tests/netprobe/client.cjs",
+    "port": 20061,
+    "tcpTarget": 8080,
+    "udpTarget": 9090,
+    "targetsEditedWithoutActivation": true,
+    "before": {
+      "tcp": "ECONNREFUSED",
+      "udp": "ETIMEDOUT"
+    },
+    "enabled": {
+      "tcp": "a5-udp tcp 8080",
+      "udp": "a5-udp udp 9090 probe-a5-port-2",
+      "udpClientAddress": "10.90.0.1",
+      "udpClientPort": 52081
+    },
+    "disabled": {
+      "tcp": "ECONNREFUSED",
+      "udp": "ETIMEDOUT",
+      "sameUDPSocket": true,
+      "numberCount": 20,
+      "activeMappings": 1,
+      "writeQueue": 0,
+      "cleanupQueue": 0
+    },
+    "lastSSHMapping": {
+      "disabledActiveMappings": 0,
+      "numberCountPreserved": 20,
+      "actualForwardRules": 0,
+      "windowsTCP": "WinError 10061",
+      "otherGuest4RulesPreserved": 40,
+      "otherDebianRulesPreserved": 1,
+      "restoredSSHAuthentication": [
+        {
+          "name": "a5-tcp",
+          "target": "10.90.0.10:20040",
+          "authenticated": true,
+          "hostKeyVerified": true,
+          "output": "p-9d3723cace99\n0",
+          "exitCode": 0
+        },
+        {
+          "name": "guest4",
+          "target": "10.90.0.10:20020",
+          "authenticated": true,
+          "hostKeyVerified": true,
+          "output": "p-e7ade30abd02\n0",
+          "exitCode": 0
+        }
+      ]
+    }
+  },
+  "browser": {
+    "pageId": 11,
+    "uiRangeAndStatusesVerified": true,
+    "visualScreenshotReviewed": true,
+    "udpCheckboxDefault": false,
+    "creationUIBothImages": true
+  },
+  "candidate": {
+    "baseRevision": "49e6a489d60adf483f347fe68d7c39c934017e6e",
+    "sourceHashes": {
+      "deploy/lab/vmnet2-forwarding.sh": "dfaedfaee85b9e2557bc51be25ed2e6ba792868b8fe64001c89c15e82ad965fd",
+      "docs/api/openapi.yaml": "a784b1bcbafa026785c7e5cff22b59b222809e6259fc9efe4392b6504c638937",
+      "internal/api/ports_test.go": "e0753bb73ba578281cd7e947cb07b683a9e1506ecd73951d6e6e8a70307e3416",
+      "internal/api/server.go": "c626b3d63dddc6d338586a12026176cd9bc241e324c627eeafeac25d560b9a1f",
+      "internal/core/allocation.go": "ca3b59f1c5c50211679cb4da5145121cc88e50c9136ab1e17922410b30f9d86a",
+      "internal/core/allocation_test.go": "5130e71cb2c01628ee2fef4335d76f2bbb799b8a9c745e155bad0d4d04470470",
+      "internal/core/app.go": "46da525e2d513437d967bd8058988c7f3fa1f58a0ecf7ca2501a5743e660539d",
+      "internal/core/backend.go": "f5a5f5135165e8816e58dd8e3657aadfd8893b5ba9216aafe94ebd0b61299f2c",
+      "internal/core/creation_ssh_test.go": "6f23ac6dfd42ccae46a06310e65a8945430f2b2166df92e319aec70c8b4e8914",
+      "internal/core/forwards.go": "a4030653f0604b95b5418fff7c9b4caa678f00f2895960442e79e177204d8d74",
+      "internal/core/forwards_test.go": "70adbeb3f42d43603050bb5945d7ed123ccb929dbc2e48cdf7bd6e7ed40e79c6",
+      "internal/core/instances.go": "cc217420565bbc854034e1a9b96cf5553b8cb119e5dd30269117226888fa1607",
+      "internal/core/ports.go": "4fd81c740a24e904e6091f00182a1b2dab399684e89d8aa0a229b87b6cd74f35",
+      "internal/core/ports_test.go": "4f9547093001b487b0e065cff11baad499b8d5a7c6d0d5d7560a1fe31695bf83",
+      "internal/incusx/exec.go": "1cdaf3616f0134835b1a2ec1f5b0289a1415e885618f1d7abd25508607fe76a8",
+      "internal/incusx/ssh.go": "fb18af383a18d2283a8f4d6952cefc964e0178500baef1e065f057bfe5635974",
+      "internal/incusx/ssh_test.go": "f407ab1c815d6ec7458a9e55bb9aa001f5ab9b6def94bcc8ad1177d6768cfa97",
+      "internal/store/store.go": "90e8257ab11490a053f3251cc67b1a0e02e470e98cc5eadb798df826d3e7cb9b",
+      "internal/store/store_test.go": "3303a29af2550dc8ee588b9aad4d7017c665c82b052ad5c238ec0bbc11ea57aa",
+      "internal/web/dist/assets/index-BCHlb2mT.css": "5a3c134bcafc16663841aea5c64195b05313da428546338216404b26af45a946",
+      "internal/web/dist/assets/index-D0hUPJy-.js": "428e2e40658c5e4ac2c44188a57004a428690fe3e432c0ddaeb036c289506158",
+      "internal/web/dist/index.html": "720cb6a4b4bef777217d546682719a0f235a037819d50aa83f4d037211c87bd1",
+      "web/src/api.ts": "5c2329e8c3e587f0d27136367eae6d49178424759c8b310fee6ca7442e9e86be",
+      "web/src/components/instance/PortAddForm.vue": "c8e693af2980b87983fa916ab6721e3fced5d1f22e41101f15dad4e54a4cf0f6",
+      "web/src/components/instance/PortAllocationPanel.vue": "52b440591bf6f6f749bed2b3cd01e7107e989de36700edadd6c66cdbf2de4666",
+      "web/src/components/instance/PortAllocationTable.vue": "b60b3eca12b88bc7eff42479fadc69558430b6c8a82a3c829e7d3efcef9d7e1e",
+      "web/src/components/instance/PortForwardStatus.vue": "d7ed6b8692b29d3c3702e98fd2f77c9297bdfb6a367d91c430bcec3816a7192d",
+      "web/src/components/instances/BatchCreateForm.vue": "e3eff9b6b0c7d1f776a0a098724da883184130149f0811ca9b2c51836d698149",
+      "web/src/components/instances/InstanceTable.vue": "20d245dad515cee0bb46a5e4c12be8e17741f030fbaee645ac8c0c2109cc2103",
+      "web/src/composables/useBatchCreate.ts": "41f17982f0c445c669b9740ddda48f642f3fda73765174732cb3c04c5614e421",
+      "web/src/composables/usePortActions.ts": "28191d535ef89f4671e54b9bc6ed830145abb2a520ad01bd131f4870858d631c",
+      "web/src/utils/ports.ts": "37a6b0c52480c84bad3ea00d1acf66d29b0679e648b347f625348f7ed947802c",
+      "web/src/utils/requestKey.ts": "cf70084f8efa76ca178f8a34eddd2dffe13f0e88cc2afd3ffffa196f08e69d9a",
+      "web/src/views/InstancesView.vue": "dc4f6e60267b6e2a14d0d2d6c50a54ccf7b4e0740cb6fa91e80d32052c6f8a2b",
+      "web/tests/behavior.test.cjs": "33356bd6f98ff6e3c7776737362d760579e8feebbea2073802713fe96f090c68",
+      "web/tests/creation.test.cjs": "f841ac16908bad3c89da96323be6a598a0c058f37350614e8d0e94041045fa28",
+      "web/tests/ports.test.cjs": "bcea26014cb38c6c020e406724c8578be45a793eae14da883e05bf561b4ed802",
+      "web/tests/vue-fixture.cjs": "843f9d2ddec1438dea2e7df90b3f57478aee7adc78271ec11076043f8d060fb9"
+    },
+    "binarySHA256": "4ba29c0d59e8850b79baa6aff8875e8071bd461c13b41632109c6332f74ef375"
+  },
+  "cleanup": {
+    "remainingInstances": [
+      {
+        "id": "befae687800fd3170802cd0cd9e38d03",
+        "name": "guest",
+        "incus_name": "p-befae687800f",
+        "nat_ipv4": "10.90.0.10",
+        "password_login": 1
+      },
+      {
+        "id": "e7ade30abd02c8520d3ef8af82ac4440",
+        "name": "guest4",
+        "incus_name": "p-e7ade30abd02",
+        "nat_ipv4": "10.90.0.10",
+        "password_login": 1
+      }
+    ],
+    "testPortRows": 0,
+    "queueCounts": {
+      "forward_writes": 0,
+      "conntrack_cleanup": 0
+    },
+    "oldPortRowsPreserved": 80,
+    "oldForwardRulesPreserved": 40,
+    "tasks": [
+      {
+        "task_id": "2cec6a2cb59afd0c44e2120e6b4b4c7f",
+        "name": "a5-tcp",
+        "status": "failed",
+        "step": "ssh",
+        "credentialEmpty": 1
+      },
+      {
+        "task_id": "cdfb2cde7a5abbf8db719cfc6a2e2dac",
+        "name": "a5-tcp",
+        "status": "ok",
+        "step": "done",
+        "credentialEmpty": 1
+      },
+      {
+        "task_id": "5fa3d98ed4c0eb1f02c11e7c3627ba41",
+        "name": "a5-udp",
+        "status": "ok",
+        "step": "done",
+        "credentialEmpty": 1
+      }
+    ],
+    "networks": [
+      {
+        "instance_id": "befae687800fd3170802cd0cd9e38d03",
+        "target_ipv4": "10.80.0.80",
+        "status": "needs-reconciliation",
+        "last_error": "power operation /1.0/operations/9dd714bf-0385-499b-bbb1-0fc6547cb1e7 (terminal=false): incus GET /1.0/operations/9dd714bf-0385-499b-bbb1-0fc6547cb1e7/wait?timeout=600 failed (HTTP 200): The instance is already running",
+        "deleting": 0,
+        "uncertain": 1,
+        "updated_at": 1789312482
+      },
+      {
+        "instance_id": "e7ade30abd02c8520d3ef8af82ac4440",
+        "target_ipv4": "10.80.0.108",
+        "status": "ready",
+        "last_error": "",
+        "deleting": 0,
+        "uncertain": 0,
+        "updated_at": 1789312550
+      }
+    ],
+    "agentPID": "54246",
+    "agentSHA256": "4ba29c0d59e8850b79baa6aff8875e8071bd461c13b41632109c6332f74ef375",
+    "incusInstances": [
+      {
+        "name": "p-befae687800f",
+        "status": "Running"
+      },
+      {
+        "name": "p-e7ade30abd02",
+        "status": "Running"
+      }
+    ],
+    "testVolumesRemaining": [],
+    "firewallService": "active",
+    "firewallEnabled": "enabled",
+    "firewallRules": [
+      "-N DOCKER-USER",
+      "-A DOCKER-USER -s 10.80.0.0/24 -i particepsbr0 -o ens33 -m comment --comment particeps-vmnet2-lab -j ACCEPT",
+      "-A DOCKER-USER -d 10.80.0.0/24 -i ens33 -o particepsbr0 -m conntrack --ctstate RELATED,ESTABLISHED -m comment --comment particeps-vmnet2-lab -j ACCEPT",
+      "-A DOCKER-USER -d 10.80.0.0/24 -i ens37 -o particepsbr0 -m conntrack --ctstate DNAT --ctorigdst 10.90.0.10 --ctdir ORIGINAL -m comment --comment particeps-vmnet2-lab -j ACCEPT",
+      "-A DOCKER-USER -s 10.80.0.0/24 -i particepsbr0 -o ens37 -m conntrack --ctstate RELATED,ESTABLISHED --ctorigdst 10.90.0.10 --ctdir REPLY -m comment --comment particeps-vmnet2-lab -j ACCEPT",
+      "-A DOCKER-USER -d 10.80.0.0/24 -i ens37 -o particepsbr0 -m conntrack --ctstate DNAT --ctorigdst 10.90.0.11 --ctdir ORIGINAL -m comment --comment particeps-vmnet2-lab -j ACCEPT",
+      "-A DOCKER-USER -s 10.80.0.0/24 -i particepsbr0 -o ens37 -m conntrack --ctstate RELATED,ESTABLISHED --ctorigdst 10.90.0.11 --ctdir REPLY -m comment --comment particeps-vmnet2-lab -j ACCEPT",
+      "-A DOCKER-USER -d 10.80.0.0/24 -i ens37 -o particepsbr0 -m conntrack --ctstate DNAT --ctorigdst 10.90.0.12 --ctdir ORIGINAL -m comment --comment particeps-vmnet2-lab -j ACCEPT",
+      "-A DOCKER-USER -s 10.80.0.0/24 -i particepsbr0 -o ens37 -m conntrack --ctstate RELATED,ESTABLISHED --ctorigdst 10.90.0.12 --ctdir REPLY -m comment --comment particeps-vmnet2-lab -j ACCEPT"
+    ],
+    "forwardPolicy": "-P FORWARD DROP",
+    "validationLogs": {
+      "core": {
+        "path": "/root/particeps-backups/a5-20260913-153837/checks/core.log",
+        "sha256": "cfbb9d8a423cbe673ee81753584671fd035194766dd32be1c9d3fcada446f4c5",
+        "passCount": 80,
+        "skipCount": 0
+      },
+      "api": {
+        "path": "/root/particeps-backups/a5-20260913-153837/checks/api.log",
+        "sha256": "eb7c4be58fb0820c1adfa7b1bc6cd407adeb9568d312f8bacfeb0ebcba19617b",
+        "passCount": 12,
+        "skipCount": 0
+      },
+      "api-fixtures": {
+        "path": "/root/particeps-backups/a5-20260913-153837/checks/api-fixtures.log",
+        "sha256": "21baea36566f8ffc47800452dc549980cc540f4a5d29d6683f690169f2995ee6",
+        "passCount": 2,
+        "skipCount": 0
+      },
+      "incusx": {
+        "path": "/root/particeps-backups/a5-20260913-153837/checks/incusx.log",
+        "sha256": "51c3e967434fc0601a0aac7e0c7ebd35ba35c6294ed3af8ccce7caaa3bd4e12d",
+        "passCount": 24,
+        "skipCount": 1
+      }
+    }
+  },
+  "finalGuest4SSH": {
+    "target": "10.90.0.10:20020",
+    "client": "Windows",
+    "authenticated": true,
+    "hostKeyVerified": true,
+    "output": "p-e7ade30abd02\n0",
+    "exitCode": 0
+  },
+  "localTestPrivateKeyRemoved": true,
+  "verificationPageClosed": true,
+  "httpContext": {
+    "isSecureContext": false,
+    "randomUUID": "undefined",
+    "getRandomValues": "function"
+  },
+  "finalVerificationDetails": {
+    "firewallCounters": "Chain DOCKER-USER (1 references)\n pkts bytes target     prot opt in     out     source               destination         \n 3245  138K ACCEPT     all  --  particepsbr0 ens33   10.80.0.0/24         0.0.0.0/0            /* particeps-vmnet2-lab */\n 8059   11M ACCEPT     all  --  ens33  particepsbr0  0.0.0.0/0            10.80.0.0/24         ctstate RELATED,ESTABLISHED /* particeps-vmnet2-lab */\n  548 5861K ACCEPT     all  --  ens37  particepsbr0  0.0.0.0/0            10.80.0.0/24         ctstate DNAT ctorigdst 10.90.0.10 ctdir ORIGINAL /* particeps-vmnet2-lab */\n  510 65281 ACCEPT     all  --  particepsbr0 ens37   10.80.0.0/24         0.0.0.0/0            ctstate RELATED,ESTABLISHED ctorigdst 10.90.0.10 ctdir REPLY /* particeps-vmnet2-lab */\n    0     0 ACCEPT     all  --  ens37  particepsbr0  0.0.0.0/0            10.80.0.0/24         ctstate DNAT ctorigdst 10.90.0.11 ctdir ORIGINAL /* particeps-vmnet2-lab */\n    0     0 ACCEPT     all  --  particepsbr0 ens37   10.80.0.0/24         0.0.0.0/0            ctstate RELATED,ESTABLISHED ctorigdst 10.90.0.11 ctdir REPLY /* particeps-vmnet2-lab */\n    0     0 ACCEPT     all  --  ens37  particepsbr0  0.0.0.0/0            10.80.0.0/24         ctstate DNAT ctorigdst 10.90.0.12 ctdir ORIGINAL /* particeps-vmnet2-lab */\n    0     0 ACCEPT     all  --  particepsbr0 ens37   10.80.0.0/24         0.0.0.0/0            ctstate RELATED,ESTABLISHED ctorigdst 10.90.0.12 ctdir REPLY /* particeps-vmnet2-lab */\n",
+    "cloudInitRegressionLog": {
+      "path": "/root/particeps-backups/a5-20260913-153837/checks-r2/cloud-init.log",
+      "sha256": "ed7b3f032351e167abeaf69eea3d59c820fffd3721c1b46ecc63fd148423a96d",
+      "passCount": 2
+    }
+  },
+  "taskScope": "Updated foundation/A5 reservations, optional UDP and SSH creation/guest4 repair. Remaining foundation acceptance is separate.",
+  "publication": {
+    "committed": false,
+    "pushed": false,
+    "releasePublished": false,
+    "experimentalHostUpdated": true
+  },
+  "knownLimits": [
+    "VMnet2 local IPv4 verification; no public Internet ingress or IPv6 claim.",
+    "Pre-existing guest instance remains running with its original needs-reconciliation power status; it was not automatically unblocked.",
+    "Complete foundation Runtime verification, full SSH/S3 matrix and remaining A6-A11 scenarios are outside this scoped result."
+  ]
+}

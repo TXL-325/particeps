@@ -134,6 +134,9 @@ func (a *App) addressWritePending(listen string) (bool, error) {
 func forwardPorts(tag, target string, ports []Port) []incusx.ForwardPort {
 	result := make([]incusx.ForwardPort, 0, len(ports))
 	for _, p := range ports {
+		if !p.Enabled {
+			continue
+		}
 		result = append(result, incusx.ForwardPort{Description: tag, Protocol: p.Proto,
 			ListenPort: strconv.Itoa(p.Number), TargetPort: strconv.Itoa(p.Target), TargetAddress: target})
 	}
@@ -221,7 +224,13 @@ func (a *App) updateInstanceForward(n networkRecord, listen, target string, port
 		if _, err := a.Store.DB.Exec(`DELETE FROM conntrack_cleanup WHERE instance_id=? AND listen_address=? AND direct_binding=1`, n.ID, listen); err != nil {
 			return err
 		}
-		if err := a.queueConntrackCleanup(n.ID, ports); err != nil {
+		active := make([]Port, 0, len(ports))
+		for _, p := range ports {
+			if p.Enabled {
+				active = append(active, p)
+			}
+		}
+		if err := a.queueConntrackCleanup(n.ID, active); err != nil {
 			return err
 		}
 	}
@@ -264,7 +273,7 @@ func (a *App) updateInstanceForward(n networkRecord, listen, target string, port
 			return err
 		}
 		if missing {
-			if remove {
+			if len(desired) == 0 {
 				return a.flushConntrackCleanupAt(n.ID, listen)
 			}
 			current = incusx.Forward{ListenAddress: listen, Description: "Particeps port mappings",
@@ -276,19 +285,24 @@ func (a *App) updateInstanceForward(n networkRecord, listen, target string, port
 		if _, err := mergeForward(current, tag, desired); err != nil {
 			return err
 		}
-		if !remove {
+		if len(desired) > 0 {
 			if err := a.checkHostPortConflicts(ports); err != nil {
 				return err
 			}
 		}
-		if !remove {
-			changed, err := changedForwardPorts(listen, tag, current.Ports, desired)
-			if err != nil {
-				return err
+		changed, err := changedForwardPorts(listen, tag, current.Ports, desired)
+		if err != nil {
+			return err
+		}
+		if remove {
+			// A failed disable may leave an actual rule whose ledger is already
+			// disabled. Drain it too; the enabled rows alone are insufficient.
+			for i := range changed {
+				changed[i].replyAddress = ""
 			}
-			if err := a.queueConntrackCleanup(n.ID, changed); err != nil {
-				return err
-			}
+		}
+		if err := a.queueConntrackCleanup(n.ID, changed); err != nil {
+			return err
 		}
 		queued, err := a.conntrackCleanupPorts(n.ID, listen)
 		if err != nil {
@@ -325,6 +339,9 @@ func (a *App) updateInstanceForward(n networkRecord, listen, target string, port
 			// DNAT; fresh guest-directed bindings have a different reply address.
 			direct := make([]Port, 0, len(ports))
 			for _, p := range ports {
+				if !p.Enabled {
+					continue
+				}
 				direct = append(direct, Port{Number: p.Number, Proto: p.Proto, ListenIP: listen, Target: p.Number, replyAddress: listen, directBinding: true})
 			}
 			if err := a.queueConntrackCleanup(n.ID, direct); err != nil {
@@ -371,7 +388,7 @@ func (a *App) managedGuestIPv4(st *incusx.InstanceState) string {
 
 func (a *App) syncPortsLocked(n networkRecord, waitForAddress bool) error {
 	if n.Uncertain {
-		return fmt.Errorf("an earlier forward write may still be active; manual reconciliation required")
+		return fmt.Errorf("an earlier instance operation may still be active; manual reconciliation required")
 	}
 	if n.Deleting {
 		return fmt.Errorf("instance deletion is pending")
@@ -384,6 +401,10 @@ func (a *App) syncPortsLocked(n networkRecord, waitForAddress bool) error {
 		return err
 	}
 	fail := func(err error) error { return a.networkFailure(n.ID, "pending", err) }
+	hasEnabled := false
+	for _, p := range ports {
+		hasEnabled = hasEnabled || p.Enabled
+	}
 	var target string
 	for attempt := 0; attempt < 121; attempt++ {
 		state, err := a.Incus.GetState(n.IncusName)
@@ -399,6 +420,11 @@ func (a *App) syncPortsLocked(n networkRecord, waitForAddress bool) error {
 			}
 			return a.markNetwork(n.ID, "inactive", "")
 		}
+		// Disabling the final mapping must remove old rules even while DHCP
+		// has no address. Reserved ports do not need a reachable target.
+		if !hasEnabled {
+			break
+		}
 		if target == "" && attempt == 0 {
 			if err := a.cleanupForwardsLocked(n); err != nil {
 				return fail(err)
@@ -412,7 +438,7 @@ func (a *App) syncPortsLocked(n networkRecord, waitForAddress bool) error {
 		}
 		time.Sleep(250 * time.Millisecond)
 	}
-	if target == "" {
+	if target == "" && hasEnabled {
 		return fmt.Errorf("no IPv4 address on the managed eth0 network yet; forwarding is disabled while waiting")
 	}
 	grouped := map[string][]Port{}
@@ -486,7 +512,7 @@ func (a *App) refreshForwardAddress(id string, state *incusx.InstanceState) {
 	if stopped && n.Status == "inactive" {
 		return
 	}
-	if !stopped && n.Status == "ready" && target != "" && target == n.Target {
+	if !stopped && n.Status == "ready" && target == n.Target {
 		return
 	}
 	if !stopped && n.Status != "ready" && target == "" {
