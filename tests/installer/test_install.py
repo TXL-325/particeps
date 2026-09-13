@@ -3,15 +3,79 @@ from __future__ import annotations
 
 import hashlib
 import os
+import select
+import signal
 import sqlite3
 import stat
 import subprocess
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
+if os.name == "posix":
+    import pty
+
 
 ELF64 = b"\x7fELF\x02" + bytes(20) + b"new-agent"
+
+
+class MenuSession:
+    """Drive a real controlling terminal, including its foreground SIGINT."""
+
+    def __init__(self, script, root, env):
+        self.pid, self.fd = pty.fork()
+        if self.pid == 0:
+            os.chdir(root)
+            os.execvpe("bash", ["bash", str(script)], env)
+        self.pending = b""
+        self.transcript = b""
+        self.returncode = None
+
+    def send(self, value):
+        os.write(self.fd, value.encode("utf-8"))
+
+    def read(self, timeout=0.2):
+        if not select.select([self.fd], [], [], timeout)[0]:
+            return
+        try:
+            chunk = os.read(self.fd, 65536)
+        except OSError:
+            chunk = b""
+        self.pending += chunk
+        self.transcript += chunk
+
+    def expect(self, value, timeout=8):
+        needle = value.encode("utf-8")
+        deadline = time.monotonic() + timeout
+        while needle not in self.pending:
+            if time.monotonic() >= deadline:
+                raise AssertionError(f"Missing {value!r}:\n{self.transcript.decode('utf-8', 'replace')}")
+            self.read()
+        end = self.pending.index(needle) + len(needle)
+        self.pending = self.pending[end:]
+
+    def wait(self, timeout=8):
+        deadline = time.monotonic() + timeout
+        while self.returncode is None:
+            pid, status = os.waitpid(self.pid, os.WNOHANG)
+            if pid:
+                self.returncode = os.waitstatus_to_exitcode(status)
+                break
+            if time.monotonic() >= deadline:
+                raise AssertionError("Menu did not exit:\n" + self.transcript.decode("utf-8", "replace"))
+            self.read()
+        return self.returncode
+
+    def close(self):
+        if self.returncode is None:
+            try:
+                os.killpg(self.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            _, status = os.waitpid(self.pid, 0)
+            self.returncode = os.waitstatus_to_exitcode(status)
+        os.close(self.fd)
 
 
 class InstallerTests(unittest.TestCase):
@@ -25,7 +89,8 @@ class InstallerTests(unittest.TestCase):
         self.data = self.root / "var" / "lib" / "particeps"
         self.mock = self.root / "bin"
         self.calls = self.root / "calls"
-        for path in (self.bin, self.etc, self.unit_dir, self.data, self.mock, self.root / "run" / "lock"):
+        self.tmp = self.root / "tmp"
+        for path in (self.bin, self.etc, self.unit_dir, self.data, self.mock, self.tmp, self.root / "run" / "lock"):
             path.mkdir(parents=True)
         self.db = self.data / "state.db"
         with sqlite3.connect(self.db) as con:
@@ -55,6 +120,7 @@ class InstallerTests(unittest.TestCase):
         self.env = os.environ.copy()
         self.env["PATH"] = str(self.mock) + os.pathsep + self.env.get("PATH", "")
         self.env["PARTICEPS_TEST_ROOT"] = str(self.root)
+        self.env["TMPDIR"] = str(self.tmp)
         self.env["PARTICEPS_GITHUB_REPO"] = "TXL-325/particeps"
         self.env.pop("PARTICEPS_RELEASE_TAG", None)
         self.env["TEST_ACTIVE"] = "1"
@@ -69,10 +135,20 @@ class InstallerTests(unittest.TestCase):
             "systemctl",
             r"""
 printf 'systemctl %s\n' "$*" >> "$TEST_CALLS"
+state="$TEST_ROOT/service-active"
 case "$1" in
-  is-active) test "${TEST_ACTIVE:-1}" = 1 ;;
-  restart) test "${TEST_RESTART_FAIL:-0}" != 1 ;;
-  stop|disable|daemon-reload|enable|show) exit 0 ;;
+  is-active)
+    active="${TEST_ACTIVE:-1}"
+    if test -f "$state"; then active=$(cat "$state"); fi
+    test "$active" = 1 ;;
+  restart)
+    test "${TEST_RESTART_FAIL:-0}" != 1
+    echo "${TEST_ACTIVE_AFTER_START:-1}" > "$state" ;;
+  enable) echo "${TEST_ACTIVE_AFTER_START:-1}" > "$state" ;;
+  stop)
+    test "${TEST_STOP_FAIL:-0}" != 1
+    echo 0 > "$state" ;;
+  disable|daemon-reload|show) exit 0 ;;
   *) exit 0 ;;
 esac
 """,
@@ -184,6 +260,13 @@ exit 0
         calls = self.calls.read_text(encoding="utf-8") if self.calls.exists() else ""
         return output, calls
 
+    def menu(self):
+        session = MenuSession(self.script, self.root, self.env)
+        self.addCleanup(session.close)
+        session.expect("0) 退出")
+        session.expect("> ")
+        return session
+
     def test_update_preserves_config_and_wal(self):
         _, calls = self.run_script("--update-only", "--non-interactive")
         self.assertIn("systemctl restart particeps-agent", calls)
@@ -221,6 +304,28 @@ exit 0
         self.env["TEST_RESTART_FAIL"] = "1"
         output, _ = self.run_script("--update-only", "-y", success=False)
         self.assertIn("备份:", output)
+
+    def test_start_command_success_requires_running_service(self):
+        self.env["TEST_ACTIVE_AFTER_START"] = "0"
+        output, _ = self.run_script("--update-only", "-y", success=False)
+        self.assertIn("Agent 未能保持运行", output)
+        self.assertNotIn("仅 Agent 更新完成", output)
+        self.assertEqual(list(self.tmp.iterdir()), [])
+
+    def test_uninstall_does_not_remove_binary_when_stop_fails(self):
+        self.env["TEST_STOP_FAIL"] = "1"
+        output, _ = self.run_script("--uninstall", "--keep-instances", "-y", success=False)
+        self.assertIn("无法停止 Agent", output)
+        self.assertTrue((self.bin / "particeps-agent").exists())
+        self.assertTrue(self.db.exists())
+
+    def test_uninstall_stops_loaded_service_when_unit_file_is_missing(self):
+        (self.unit_dir / "particeps-agent.service").unlink()
+        _, calls = self.run_script("--uninstall", "--keep-instances", "-y")
+        self.assertIn("systemctl stop particeps-agent", calls)
+        self.assertEqual((self.root / "service-active").read_text().strip(), "0")
+        self.assertFalse((self.bin / "particeps-agent").exists())
+        self.assertTrue(self.config.exists())
 
     def test_update_only_requires_install(self):
         self.config.unlink()
@@ -284,6 +389,193 @@ exit 0
         self.assertIn("初始密码:", output)
         self.assertNotIn("admin-bootstrap.txt", output)
         self.assertFalse((self.data / "admin-bootstrap.txt").exists())
+        password = output.split("初始密码: ", 1)[1].splitlines()[0]
+        logs = list((self.root / "var" / "log" / "particeps-install").iterdir())
+        self.assertTrue(logs)
+        for logfile in logs:
+            self.assertNotIn(password, logfile.read_text(encoding="utf-8"))
+            self.assertEqual(logfile.stat().st_mode & 0o777, 0o600)
+
+    @unittest.skipUnless(os.name == "posix", "requires a POSIX controlling terminal")
+    def test_menu_invalid_input_and_repeated_status(self):
+        session = self.menu()
+        session.send("\x03")
+        session.expect("已取消当前输入")
+        session.expect("0) 退出")
+        session.send("invalid\n")
+        session.expect("无效选项")
+        for _ in range(2):
+            session.expect("0) 退出")
+            session.send("2\n")
+            session.expect("AGENT_SERVICE=")
+            session.expect("按回车返回菜单")
+            session.read()
+            self.assertNotIn("particeps 安装脚本".encode(), session.pending)
+            session.send("\n")
+        session.expect("0) 退出")
+        session.send("0\n")
+        self.assertEqual(session.wait(), 0)
+        self.assertEqual(list(self.tmp.iterdir()), [])
+
+    @unittest.skipUnless(os.name == "posix", "requires a POSIX controlling terminal")
+    def test_menu_failure_waits_allows_log_and_safe_retry(self):
+        original_curl = (self.mock / "curl").read_text(encoding="utf-8")
+        self.tool("curl", "echo 'injected download failure' >&2\nexit 22")
+        (self.mock / "flock").unlink()  # Real flock verifies release between attempts.
+        session = self.menu()
+        session.send("1\n")
+        session.expect("回车执行")
+        session.send("e\n")
+        session.expect("Release 版本")
+        session.send("bad tag\n")
+        session.expect("版本只能包含")
+        session.expect("Release 版本")
+        session.send("v0.2.0\n")
+        session.expect("回车执行")
+        session.send("\n")
+        session.expect("[失败]")
+        session.expect("按回车返回菜单")
+        session.read()
+        self.assertNotIn("particeps 安装脚本".encode(), session.pending)
+        self.assertEqual((self.bin / "particeps-agent").read_text(), "old-agent")
+        self.assertNotIn("systemctl restart", self.calls.read_text())
+        session.send("l\n")
+        session.expect("injected download failure")
+        session.expect("按回车返回菜单")
+        (self.mock / "curl").write_text(original_curl, encoding="utf-8")
+        session.send("r\n")
+        session.expect("[成功]")
+        session.expect("按回车返回菜单")
+        self.assertEqual((self.bin / "particeps-agent").read_bytes(), ELF64)
+        self.assertIn("releases/download/v0.2.0/", self.calls.read_text())
+        session.send("\n")
+        session.expect("0) 退出")
+        session.send("0\n")
+        self.assertEqual(session.wait(), 0)
+        self.assertEqual(list(self.tmp.iterdir()), [])
+
+    @unittest.skipUnless(os.name == "posix", "requires a POSIX controlling terminal")
+    def test_menu_unexpected_command_failure_stops_downstream_steps(self):
+        self.tool("cp", r'''
+case "$*" in
+  *upgrade-*/config.yaml) echo 'injected backup failure' >&2; exit 17 ;;
+esac
+exec /bin/cp "$@"
+''')
+        session = self.menu()
+        session.send("1\n")
+        session.expect("回车执行")
+        session.send("\n")
+        session.expect("[失败]")
+        session.expect("按回车返回菜单")
+        self.assertEqual((self.bin / "particeps-agent").read_text(), "old-agent")
+        self.assertNotIn("systemctl restart", self.calls.read_text())
+        session.send("\n")
+        session.expect("0) 退出")
+        session.send("0\n")
+        self.assertEqual(session.wait(), 0)
+
+    @unittest.skipUnless(os.name == "posix", "requires a POSIX controlling terminal")
+    def test_menu_interrupt_cancels_child_cleans_staging_and_returns(self):
+        self.tool("curl", r'''
+echo $$ > "$TEST_ROOT/download-pid"
+echo 'mock download waiting' >&2
+exec /bin/sleep 30
+''')
+        session = self.menu()
+        session.send("1\n")
+        session.expect("回车执行")
+        session.send("\n")
+        session.expect("mock download waiting")
+        download_pid = int((self.root / "download-pid").read_text())
+        session.send("\x03")
+        session.expect("[已取消]")
+        session.expect("0) 退出")
+        with self.assertRaises(ProcessLookupError):
+            os.kill(download_pid, 0)
+        self.assertEqual((self.bin / "particeps-agent").read_text(), "old-agent")
+        session.send("2\n")
+        session.expect("[成功]")
+        session.expect("按回车返回菜单")
+        session.send("\n")
+        session.expect("0) 退出")
+        session.send("0\n")
+        self.assertEqual(session.wait(), 0)
+        self.assertEqual(list(self.tmp.iterdir()), [])
+
+    @unittest.skipUnless(os.name == "posix", "requires a POSIX controlling terminal")
+    def test_menu_uninstall_options_do_not_leak_and_decline_is_cancel(self):
+        session = self.menu()
+        session.send("5\n")
+        session.expect("回车执行")
+        session.send("\n")
+        session.expect("[成功]")
+        session.expect("按回车返回菜单")
+        session.send("\n")
+        session.expect("0) 退出")
+        session.send("4\n")
+        session.expect("输入 PURGE")
+        session.send("no\n")
+        session.expect("[已取消]")
+        session.expect("0) 退出")
+        session.send("0\n")
+        self.assertEqual(session.wait(), 0)
+        self.assertTrue(self.config.exists())
+        self.assertTrue(self.db.exists())
+        self.assertNotIn("incus --project particeps delete", self.calls.read_text())
+
+    @unittest.skipUnless(os.name == "posix", "requires a POSIX controlling terminal")
+    def test_menu_interrupting_log_view_returns_to_menu(self):
+        self.tool("cat", r'''
+case "${2:-}" in
+  "$TEST_ROOT"/var/log/particeps-install/*)
+    echo 'mock log waiting'
+    exec /bin/sleep 30 ;;
+esac
+exec /bin/cat "$@"
+''')
+        session = self.menu()
+        session.send("2\n")
+        session.expect("按回车返回菜单")
+        session.send("l\n")
+        session.expect("mock log waiting")
+        session.send("\x03")
+        session.expect("已停止查看日志")
+        session.expect("0) 退出")
+        session.send("0\n")
+        self.assertEqual(session.wait(), 0)
+
+    @unittest.skipUnless(os.name == "posix", "requires a POSIX controlling terminal")
+    def test_menu_does_not_offer_retry_after_replacement(self):
+        self.env["TEST_RESTART_FAIL"] = "1"
+        session = self.menu()
+        session.send("1\n")
+        session.expect("回车执行")
+        session.send("\n")
+        session.expect("[失败]")
+        session.expect("按回车返回菜单")
+        session.send("r\n")
+        session.expect("当前操作不提供直接重试")
+        session.expect("按回车返回菜单")
+        self.assertEqual(self.calls.read_text().count("systemctl restart particeps-agent"), 1)
+        self.assertEqual((self.bin / "particeps-agent").read_bytes(), ELF64)
+        session.send("\n")
+        session.expect("0) 退出")
+        session.send("0\n")
+        self.assertEqual(session.wait(), 0)
+
+    @unittest.skipUnless(os.name == "posix", "requires a POSIX controlling terminal")
+    def test_terminal_eof_ends_menu_and_result_page(self):
+        for at_result in (False, True):
+            with self.subTest(at_result=at_result):
+                session = self.menu()
+                if at_result:
+                    session.send("2\n")
+                    session.expect("按回车返回菜单")
+                    session.expect("> ")
+                session.send("\x04")
+                self.assertEqual(session.wait(), 0)
+                self.assertEqual(list(self.tmp.iterdir()), [])
 
 if __name__ == "__main__":
     unittest.main()

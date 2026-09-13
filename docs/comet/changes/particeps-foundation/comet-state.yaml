@@ -3,9 +3,9 @@ name: particeps-foundation
 language: zh-CN
 phase: build
 status: active
-state_version: 28
+state_version: 33
 brief: brief.md
-shape_confirmation_hash: b674fd624446a6eaf8dde0fe12a09ba31f395a78dc2b40c15325cde9678ceba8
+shape_confirmation_hash: 8da04b39db9e80d38d405507bdb94976ed67df29831bc67e3f1e0c2f183e1b68
 spec_changes:
   - capability: agent-architecture
     operation: create
@@ -23,7 +23,7 @@ workspace:
   finish: null
 loop:
   stage: building
-  goal_cycle: 11
+  goal_cycle: 13
   iteration: 1
   attempt: 0
   retry_epoch: 0
@@ -38,16 +38,24 @@ acceptance:
     text: A13：在 Debian 13 amd64 上，通过 GitHub Release 的安装脚本完成首次安装、仅升级
       Agent、查看状态、从最近一次升级备份回滚，以及卸载。打版本 tag 后 GitHub Actions 构建 linux amd64，并上传
       Agent 二进制、install.sh 和 SHA256。脚本只从 Release 下载；SHA256 或 ELF64
-      校验失败时不替换现有程序，不改配置与后端资源。首次安装仅在缺失时创建 particeps 项目、particepsbr0（10.80.0.0/24
-      NAT、IPv6 关闭）和 16 GiB 的 particeps-pool；同名资源已存在则不修改，配置冲突则拒绝并保持原状；已有
-      `/etc/particeps/config.yaml` 不覆盖。升级前备份程序、systemd 单元、配置和管理库（SQLite 在线备份含
-      WAL，目录权限 0700），不含小鸡磁盘；替换程序后不改实例、网桥、存储池和配置值；原已停止的 Agent
-      保持停止；服务重启失败不得报告成功，并给出备份路径。`--status` 显示 Agent/Incus
-      服务、监听地址和最近备份。`--rollback`
-      从最近升级备份恢复程序、单元、配置和管理库。无参数且在终端时提供五项菜单：安装/升级、状态、回滚、全部卸载、只卸 Agent。卸载默认删除
-      Agent、配置、数据、particeps 项目内受管实例、particepsbr0、particeps-pool 和 particeps 项目，不
-      apt 卸载 Incus，不触碰其他项目或其他工具的实例；执行前必须输入 PURGE。`--keep-instances`
-      只停止并移除程序与服务，保留实例、网桥、池和管理数据。并发安装/升级被锁拒绝。
+      校验失败时不替换现有程序，不改配置与后端资源。首次安装使用 particeps 项目、particepsbr0（10.80.0.0/24 IPv4
+      NAT）和 LVM thin 的 particeps-pool。新池按根分区可用整 GiB 的 30% 向下取整建议大小，下限 1 GiB、上限
+      25 GiB且不超过可用空间；可用不足 1 GiB 时拒绝。交互允许输入 1 至可用 GiB 的整数并确认，非交互使用建议值；已有 lvm
+      池保留，其他驱动拒绝。检测母机非回环、非容器/虚拟网桥接口上的 scope global IPv6（含 ULA）；有地址时新桥使用
+      ipv6.address=auto、ipv6.nat=true，无地址时新桥禁用 IPv6。既有桥的 IPv4 地址与 NAT
+      必须匹配；只有检测到上述 IPv6 且原 ipv6.address 为空/none 时补配 IPv6，其余配置保持。已有项目保留，已有
+      `/etc/particeps/config.yaml` 不覆盖。新配置监听 0.0.0.0:8792，HTTP 会话 Cookie 默认非
+      Secure，HTTPS 部署显式启用 Secure。安装显示在用非虚拟网卡的 IPv4 面板地址；无管理员时生成 20 位密码，经
+      bootstrap-only 写入哈希，仅在安装终端展示，不写
+      admin-bootstrap.txt；已有管理员不重置或重复交付。升级前备份程序、systemd 单元、配置和管理库（SQLite 在线备份含
+      WAL；存在的 metrics.db 也备份；目录权限 0700），不含小鸡磁盘；升级不改实例、网桥、池和配置，原已停止的 Agent
+      保持停止，服务重启失败不得报告成功且给出备份路径。`--status` 显示 Agent/Incus
+      服务、监听地址和最近备份；`--rollback` 恢复程序、单元、配置和管理库。无参数终端提供安装/升级、状态、回滚、全部卸载、只卸 Agent
+      五项操作。全卸先要求 PURGE，再删除 particeps 项目内全部实例、专用桥/池/项目及 Agent、配置和数据；此步骤保留其他项目和
+      Incus。完成后列出其他项目实例并单独询问是否卸载 Incus：默认否，非交互保留，仅明确回答 y/Y 才 apt purge
+      Incus/lxcfs 并清除 Incus 数据目录，此选择会清除其他项目实例，必须先说明影响。`--keep-instances`
+      只停止并移除程序与服务，保留实例、网络、池、配置和数据，不进入 Incus 清除流程。并发安装/升级被锁拒绝。测试须分别核对新旧资源、IPv6
+      有/无、管理员有/无、服务启停、保留/全卸及失败保护，mock 通过不代替实机结果。
     result: pending
     reason: null
   - id: A2
@@ -293,6 +301,24 @@ history:
       text: Native confirmed acceptance criteria changed
       truncated: false
     completed_at: 2026-09-12T14:03:26.127Z
+  - goal_cycle: 11
+    iteration: 1
+    attempt: 0
+    outcome: recovery
+    unresolved_ids: []
+    summary:
+      text: Native confirmed acceptance criteria changed
+      truncated: false
+    completed_at: 2026-09-13T05:53:30.018Z
+  - goal_cycle: 12
+    iteration: 0
+    attempt: 0
+    outcome: recovery
+    unresolved_ids: []
+    summary:
+      text: Native Shape artifacts changed
+      truncated: false
+    completed_at: 2026-09-13T06:27:28.655Z
 history_overflow:
   dropped_entries: 0
   first_dropped_at: null

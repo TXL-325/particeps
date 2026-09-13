@@ -23,6 +23,7 @@
 ## 本次交付
 
 - GitHub Release 安装脚本：首次安装、仅升级 Agent、状态、从最近升级备份回滚、卸载；无参数终端五项菜单；打 tag 后 Actions 上传 linux amd64 二进制、install.sh 和 SHA256。
+- 本轮已确认的 A13 菜单优化：五项菜单持续运行；失败停止当前操作，显示失败步骤、原因、实际变更和日志位置，等待回车返回发起菜单；执行中 Ctrl+C 取消当前任务并清理本次临时资源后返回菜单。提供执行摘要、参数校验与会话内保留、阶段进度、结果验证和有条件的人工重试；命令行失败保持非零退出码。
 - 首装存储池按根分区可用空间建议大小并允许输入；依据母机上联网卡 IPv6 地址设置网桥 IPv6 NAT。默认通过所有 IPv4 地址提供 HTTP 面板，初始管理员密码只在安装终端展示；全卸后另行询问是否清除 Incus，非交互保留 Incus。
 - 独立 Go Agent、嵌入 Vue Web、/api/v1、受管 Incus 系统容器身份和已有资源边界。
 - Alpine 与 Debian 13 初始系统选项及真实创建，默认 Alpine；正常批量创建至少两台并逐台查询结果。
@@ -61,6 +62,7 @@
 | N14 | 用户 2026-09-12 部署脚本讨论；原 A56 的安装/更新/备份切片；runman-agent `install.sh` 为对照 | complete | GitHub Release 安装、升级、状态、回滚、卸载与五项菜单 | project-foundation：部署与发布；agent-architecture：部署与发布 | A13 | covered；固定 16 GiB、禁用 IPv6、绝不卸载 Incus 的旧语义由 N15 取代，其余保留 |
 | N15 | 用户 2026-09-13 选择保留 `58bab0a`；完整读取该提交的 install.sh、config、main、bootstrap 及对应改动 | complete | 存储池交互/默认值、IPv6 检测与既有桥补配、HTTP 默认监听、一次展示管理员密码、全卸后可选清除 Incus | project-foundation：部署与发布；agent-architecture：部署与发布、接口与凭据；agent-management：认证与凭据 | A13 | covered；覆盖 D43/D47 中冲突的安装限制，Agent 常规资源归属边界保留 |
 | R1 | 当前源码、F03 报告、证据 JSON、功能审阅和实验环境文档 | complete | 核对已有实现与记录的证明范围 | — | — | background；本轮不把历史结果冒称重新测试 |
+| N16 | 本轮部署脚本讨论，用户分别确认失败等待回车、Ctrl+C 取消当前任务，并以 yes 确认完整流程草稿 | complete | 持续菜单、失败恢复、取消清理、参数与进度、结果验证、日志和非交互退出码 | project-foundation：部署与发布；agent-architecture：部署与发布 | A13 | covered；只优化脚本交互，不扩大为其他基础交付或实机部署 |
 | R2 | `D:\Project\NET鸡\runman-agent\runman-agent代码\install.sh` 与升级测试 | complete | 升级备份、ELF 校验、失败不改现网、卸载分层的对照实现 | — | — | background；只吸收已确认的运维行为，不把平台功能带入本次 |
 
 # 非目标
@@ -74,6 +76,8 @@ Agent 常规操作仍不接管既有 Incus/runman-agent 实例；不修改参考
 # 验收示例
 
 以下为本次交付的局部 A1–A13。A13 优先实现。全部场景须有当前候选的真实结论；原编号与本次编号的映射见交付计划。
+
+A13 的终端菜单同时核对：无效输入仍在当前菜单；连续操作不串用卸载标志或保留锁；失败后下游步骤不执行，回车前不重绘主菜单；日志可查看，安全重试重新预检且保留会话参数；Ctrl+C 能中止当前任务并清理暂存文件，显示实际变更后回菜单；成功先核对实际服务状态；日志不保存初始管理员密码；非交互失败不等待输入且退出非零。上述菜单行为通过真实 PTY 配合隔离的宿主命令 mock 验证，不冒称实机安装、卸载或完整 A13 验收通过。
 
 - A13：在 Debian 13 amd64 上，通过 GitHub Release 的安装脚本完成首次安装、仅升级 Agent、查看状态、从最近一次升级备份回滚，以及卸载。打版本 tag 后 GitHub Actions 构建 linux amd64，并上传 Agent 二进制、install.sh 和 SHA256。脚本只从 Release 下载；SHA256 或 ELF64 校验失败时不替换现有程序，不改配置与后端资源。首次安装使用 particeps 项目、particepsbr0（10.80.0.0/24 IPv4 NAT）和 LVM thin 的 particeps-pool。新池按根分区可用整 GiB 的 30% 向下取整建议大小，下限 1 GiB、上限 25 GiB且不超过可用空间；可用不足 1 GiB 时拒绝。交互允许输入 1 至可用 GiB 的整数并确认，非交互使用建议值；已有 lvm 池保留，其他驱动拒绝。检测母机非回环、非容器/虚拟网桥接口上的 scope global IPv6（含 ULA）；有地址时新桥使用 ipv6.address=auto、ipv6.nat=true，无地址时新桥禁用 IPv6。既有桥的 IPv4 地址与 NAT 必须匹配；只有检测到上述 IPv6 且原 ipv6.address 为空/none 时补配 IPv6，其余配置保持。已有项目保留，已有 `/etc/particeps/config.yaml` 不覆盖。新配置监听 0.0.0.0:8792，HTTP 会话 Cookie 默认非 Secure，HTTPS 部署显式启用 Secure。安装显示在用非虚拟网卡的 IPv4 面板地址；无管理员时生成 20 位密码，经 bootstrap-only 写入哈希，仅在安装终端展示，不写 admin-bootstrap.txt；已有管理员不重置或重复交付。升级前备份程序、systemd 单元、配置和管理库（SQLite 在线备份含 WAL；存在的 metrics.db 也备份；目录权限 0700），不含小鸡磁盘；升级不改实例、网桥、池和配置，原已停止的 Agent 保持停止，服务重启失败不得报告成功且给出备份路径。`--status` 显示 Agent/Incus 服务、监听地址和最近备份；`--rollback` 恢复程序、单元、配置和管理库。无参数终端提供安装/升级、状态、回滚、全部卸载、只卸 Agent 五项操作。全卸先要求 PURGE，再删除 particeps 项目内全部实例、专用桥/池/项目及 Agent、配置和数据；此步骤保留其他项目和 Incus。完成后列出其他项目实例并单独询问是否卸载 Incus：默认否，非交互保留，仅明确回答 y/Y 才 apt purge Incus/lxcfs 并清除 Incus 数据目录，此选择会清除其他项目实例，必须先说明影响。`--keep-instances` 只停止并移除程序与服务，保留实例、网络、池、配置和数据，不进入 Incus 清除流程。并发安装/升级被锁拒绝。测试须分别核对新旧资源、IPv6 有/无、管理员有/无、服务启停、保留/全卸及失败保护，mock 通过不代替实机结果。
 - A1：Linux amd64 Agent 在已准备的 Debian 13 实验母机启动，以同一二进制提供嵌入式 Web 和 /api/v1；管理 ID、Incus 实例与查询对象对应。创建、查询、启停和删除仅操作本项目受管资源，其他工具的实例与参考仓库保持原样。
@@ -124,6 +128,9 @@ Agent 常规操作仍不接管既有 Incus/runman-agent 实例；不修改参考
 | D50 | 母机非虚拟上联存在 scope global IPv6（含 ULA）时，新桥启用 auto/NAT，既有未配 IPv6 的桥补配；其他既有 IPv6 保留 | 取代一律禁用 IPv6；检测到地址不证明公网出口，不扩展为 Agent IPv6 生命周期完成 |
 | D51 | 默认监听 0.0.0.0:8792、HTTP Cookie 非 Secure；首装显示面板 IPv4 地址与一次性管理员密码，管理员只存哈希、不写引导密码文件 | HTTPS 需显式启用 Secure；已有管理员不重置；对应 `--bootstrap-only` 初始化流程 |
 | D52 | 全卸删除 particeps 项目内全部实例；随后可单独选择清除 Incus 及其他项目数据，先列明影响；默认否、非交互保留，keep-instances 不进入此流程 | 取代绝不 apt 卸载 Incus 的限制；并非 Agent 日常可接管其他工具资源 |
+| D53 | 操作失败显示结果并等待一次回车，再回到发起操作的菜单；无效菜单输入不退出 | 用户明确确认失败结果页等待回车 |
+| D54 | 执行中 Ctrl+C 只取消当前任务，完成必要临时资源清理并显示已取消后返回菜单；主菜单 0 退出 | 用户明确同意取消行为；不隐式回滚或清除已安装资源 |
+| D55 | 保留五项菜单，增加摘要、参数校验与会话内保留、进度、真实状态验证和诊断日志；安全重试重新预检，非交互失败非零退出 | 用户以 yes 确认完整交互流程；本轮只实现该脚本切片，保留其他既有工作与待验项 |
 
 原 D1–D34 的产品选择及修正已完整保存在首期基线。D43 及 D48–D52 更新本次安装脚本边界，不修改首期基线正文。
 

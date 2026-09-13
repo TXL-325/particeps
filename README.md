@@ -45,7 +45,9 @@ bash install.sh --uninstall -y --confirm PURGE
 bash install.sh --uninstall --keep-instances
 ```
 
-无参数且在终端中运行时提供五项菜单。全卸删除 Agent、配置、数据、`particeps` 项目内全部实例以及专用网桥/存储池/项目，执行前必须输入 `PURGE`。完成后另行询问是否卸载 Incus，并列出其他项目实例；选择 `y` 会清除 Incus 及这些实例，默认回车保留，`-y` 非交互模式也保留 Incus。`--keep-instances` 只卸程序和服务，保留配置、数据及实例，不进入 Incus 清除流程。
+无参数且在终端中运行时提供持续运行的五项菜单。失败后显示结果并等待回车，再返回菜单；执行中 `Ctrl+C` 取消本次任务并清理临时文件，主菜单 `0` 退出。结果页可用 `L` 查看诊断日志；适合安全重试时提供 `R`，安装/升级还可用 `E` 修改 Release 版本。操作显示执行摘要和阶段进度，非交互调用失败仍返回非零退出码。完整说明和流程图见[安装脚本交互流程](docs/development/installer-workflow.md)。
+
+全卸删除 Agent、配置、数据、`particeps` 项目内全部实例以及专用网桥/存储池/项目，执行前必须输入 `PURGE`。完成后另行询问是否卸载 Incus，并列出其他项目实例；选择 `y` 会清除 Incus 及这些实例，默认回车保留，`-y` 非交互模式也保留 Incus。`--keep-instances` 只卸程序和服务，保留配置、数据及实例，不进入 Incus 清除流程。
 
 [安装脚本](deploy/install.sh)使用 `particeps` 项目、`particepsbr0` 网桥和 LVM thin 的 `particeps-pool`。首装可选择新池大小，脚本按根分区余量建议，`-y` 使用建议值；已有 lvm 池保持原样。默认 IPv4 网段为 `10.80.0.0/24`，NAT 开启。检测到母机全局范围 IPv6（含 ULA）时，新桥或未配置 IPv6 的既有桥启用 auto/NAT；公网连通仍需验证。已有桥的 IPv4 配置冲突则拒绝。
 

@@ -1,5 +1,5 @@
 #!/bin/bash
-set -euo pipefail
+set -Eeuo pipefail
 
 # particeps installer: install / update / status / rollback / uninstall
 # Downloads Agent only from GitHub Releases.
@@ -18,6 +18,7 @@ AGENT_SERVICE="particeps-agent"
 AGENT_UNIT_FILE="/etc/systemd/system/particeps-agent.service"
 BACKUP_ROOT="/var/lib/particeps/backups"
 LOCK_FILE="/run/lock/particeps-install.lock"
+LOG_DIR="/var/log/particeps-install"
 INCUS_PROJECT="particeps"
 INCUS_NETWORK="particepsbr0"
 INCUS_POOL="particeps-pool"
@@ -34,6 +35,7 @@ if [ -n "${PARTICEPS_TEST_ROOT:-}" ]; then
     AGENT_UNIT_FILE="$PREFIX/etc/systemd/system/particeps-agent.service"
     BACKUP_ROOT="$AGENT_DATA_DIR/backups"
     LOCK_FILE="$PREFIX/run/lock/particeps-install.lock"
+    LOG_DIR="$PREFIX/var/log/particeps-install"
     SKIP_HOST=1
 else
     SKIP_HOST=0
@@ -46,9 +48,64 @@ CONFIRM_WORD=""
 ACTION=""
 ORIGINAL_ARGC=$#
 UPGRADE_BACKUP=""
+TASK_STEP="准备操作"
+TASK_STATE="尚未修改程序、服务或 Incus 资源"
+TASK_ERROR=""
+TASK_RETRY=1
+TASK_WORK_DIR=""
+TASK_RESULT_DIR=""
+TASK_LOG=""
+TASK_LOG_PID=""
+MENU_SESSION_DIR=""
+MENU_INTERRUPTED=0
+MENU_EOF=0
+RESULT_RETRY=0
 
 log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" >&2; }
-die() { log "$*"; exit 1; }
+die() { TASK_ERROR="$*"; log "$TASK_ERROR"; exit 1; }
+cancel_task() { TASK_ERROR="已取消当前操作"; exit "${1:-130}"; }
+
+step() {
+    TASK_STEP="$*"
+    log "[$TASK_STEP]"
+}
+
+task_state() {
+    TASK_STATE="$1"
+    TASK_RETRY="${2:-0}"
+}
+
+unexpected_error() {
+    local code="$1" line="$2"
+    TASK_ERROR="命令执行失败（退出码 ${code}，脚本第 ${line} 行）"
+    log "$TASK_ERROR"
+}
+
+finish_task() {
+    local code="$1"
+    trap - EXIT ERR
+    trap '' INT TERM
+    set +e
+    if [ -n "$TASK_WORK_DIR" ]; then
+        rm -rf -- "$TASK_WORK_DIR" || log "临时文件清理失败: $TASK_WORK_DIR"
+    fi
+    if [ "$code" -ne 0 ]; then
+        log "${TASK_ERROR:-操作未完成（退出码 $code）}；阶段: $TASK_STEP"
+        log "当前状态: $TASK_STATE"
+    fi
+    if [ -n "$TASK_RESULT_DIR" ]; then
+        printf '%s\n' "$TASK_STEP" > "$TASK_RESULT_DIR/step"
+        printf '%s\n' "$TASK_STATE" > "$TASK_RESULT_DIR/state"
+        printf '%s\n' "$TASK_ERROR" > "$TASK_RESULT_DIR/error"
+        printf '%s\n' "$TASK_RETRY" > "$TASK_RESULT_DIR/retry"
+        printf '%s\n' "$TASK_LOG" > "$TASK_RESULT_DIR/log"
+    fi
+    if [ -n "$TASK_LOG_PID" ]; then
+        exec 2>&8 8>&-
+        wait "$TASK_LOG_PID" || true
+    fi
+    exit "$code"
+}
 
 require_root() {
     [ "$(id -u)" = "0" ] || die "需要 root"
@@ -76,6 +133,8 @@ particeps 安装脚本（仅从 GitHub Release 下载二进制）
   bash install.sh --tag vX.Y.Z            使用指定 Release
   bash install.sh -y                      非交互（存储池用默认大小；不卸 Incus）
 
+菜单操作失败后按回车返回，Ctrl+C 取消当前任务；0 退出主菜单。
+诊断日志：/var/log/particeps-install（不记录初始管理员密码）。
 环境变量：PARTICEPS_RELEASE_TAG、PARTICEPS_GITHUB_REPO
 EOF
 }
@@ -88,16 +147,187 @@ show_menu() {
     printf '  4) 全部卸载（要输入 PURGE）\n'
     printf '  5) 只卸 Agent\n'
     printf '  0) 退出\n'
-    read -rp '> ' _choice
-    case "${_choice}" in
-        1) ACTION="install" ;;
-        2) ACTION="status" ;;
-        3) ACTION="rollback" ;;
-        4) ACTION="uninstall" ;;
-        5) ACTION="uninstall"; KEEP_INSTANCES=1 ;;
-        0) exit 0 ;;
-        *) die "无效选项" ;;
+    printf '  Ctrl+C 取消当前输入或任务\n'
+}
+
+menu_read() {
+    MENU_INTERRUPTED=0
+    # A flag-only SIGINT trap lets Bash resume its read builtin. Return from
+    # this input helper explicitly, then restore the task/log-view handler.
+    trap 'MENU_INTERRUPTED=1; trap "MENU_INTERRUPTED=1" INT; printf "\n已取消当前输入\n"; return 1' INT
+    if read -r -p "$1" "$2"; then
+        trap 'MENU_INTERRUPTED=1' INT
+        return 0
+    fi
+    trap 'MENU_INTERRUPTED=1' INT
+    if [ "$MENU_INTERRUPTED" = "1" ]; then
+        printf '\n已取消当前输入\n'
+    else
+        MENU_EOF=1
+        printf '\n输入已结束\n'
+    fi
+    return 1
+}
+
+edit_release_tag() {
+    local tag
+    while true; do
+        menu_read "Release 版本 [${RELEASE_TAG}]（0 返回）: " tag || return 1
+        [ "$tag" != "0" ] || return 1
+        tag="${tag:-$RELEASE_TAG}"
+        if [[ "$tag" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
+            RELEASE_TAG="$tag"
+            return 0
+        fi
+        printf '版本只能包含字母、数字、点、下划线和短横线，例如 latest 或 v0.1.1。\n'
+    done
+}
+
+action_summary() {
+    local choice
+    case "$ACTION" in
+        status) return 0 ;;
+        install)
+            if installed; then
+                printf '\n操作：仅升级 Agent；保留实例与配置，替换前创建备份。\n'
+            else
+                printf '\n操作：首次安装 Agent，并准备专用 Incus 资源。\n'
+            fi
+            ;;
+        rollback) printf '\n操作：恢复最近升级备份中的程序、单元、配置与管理数据库。\n' ;;
+        uninstall)
+            if [ "$KEEP_INSTANCES" = "1" ]; then
+                printf '\n操作：只卸 Agent；实例、配置与数据保留。\n'
+            else
+                printf '\n操作：全部卸载 particeps 项目内实例、专用资源、程序、配置与数据。\n'
+                return 0 # The task requires the existing PURGE confirmation.
+            fi
+            ;;
     esac
+    while true; do
+        if [ "$ACTION" = "install" ]; then
+            printf 'Release：%s\n' "$RELEASE_TAG"
+            menu_read '回车执行，E 修改版本，0 返回菜单: ' choice || return 1
+        else
+            menu_read '回车执行，0 返回菜单: ' choice || return 1
+        fi
+        case "$choice" in
+            '') return 0 ;;
+            0) return 1 ;;
+            E|e)
+                if [ "$ACTION" = "install" ]; then
+                    edit_release_tag || return 1
+                else
+                    printf '无效选项，请重新输入。\n'
+                fi
+                ;;
+            *) printf '无效选项，请重新输入。\n' ;;
+        esac
+    done
+}
+
+show_result() {
+    local code="$1" detail state logfile retry choice
+    RESULT_RETRY=0
+    detail=$(cat "$TASK_RESULT_DIR/step" 2>/dev/null || printf '准备操作')
+    state=$(cat "$TASK_RESULT_DIR/state" 2>/dev/null || printf '结果未能完整记录，请检查实际状态')
+    logfile=$(cat "$TASK_RESULT_DIR/log" 2>/dev/null || true)
+    retry=$(cat "$TASK_RESULT_DIR/retry" 2>/dev/null || printf 0)
+    case "$code" in
+        0) printf '\n[成功] 操作完成\n' ;;
+        130|143) printf '\n[已取消] 当前任务已停止\n' ;;
+        *)
+            printf '\n[失败] %s\n' "$detail"
+            printf '原因：%s\n' "$(cat "$TASK_RESULT_DIR/error" 2>/dev/null || true)"
+            ;;
+    esac
+    printf '当前状态：%s\n' "$state"
+    [ -z "$logfile" ] || printf '诊断日志：%s\n' "$logfile"
+    case "$code" in 130|143) return 0 ;; esac
+    while true; do
+        printf '\n按回车返回菜单，L 查看日志'
+        if [ "$code" -ne 0 ] && [ "$retry" = "1" ] && [ "$ACTION" != "uninstall" ]; then
+            printf '，R 重新检查并重试'
+            [ "$ACTION" != "install" ] || printf '，E 修改版本后重试'
+        fi
+        printf '\n'
+        menu_read '> ' choice || return 0
+        case "$choice" in
+            ''|0) return 0 ;;
+            L|l)
+                if [ -n "$logfile" ] && [ -f "$logfile" ]; then
+                    if ! cat -- "$logfile"; then
+                        if [ "$MENU_INTERRUPTED" = "1" ]; then
+                            printf '\n已停止查看日志\n'
+                            return 0
+                        fi
+                        printf '无法读取诊断日志，请检查文件状态。\n'
+                    fi
+                else
+                    printf '没有可用的诊断日志。\n'
+                fi
+                ;;
+            R|r|E|e)
+                if [ "$code" -ne 0 ] && [ "$retry" = "1" ] && [ "$ACTION" != "uninstall" ]; then
+                    if [[ "$choice" = [Ee] ]]; then
+                        [ "$ACTION" = "install" ] || continue
+                        if ! edit_release_tag; then
+                            [ "$MENU_EOF" = "0" ] || return 0
+                            continue
+                        fi
+                    fi
+                    RESULT_RETRY=1
+                    return 0
+                fi
+                printf '当前操作不提供直接重试，请返回菜单核对状态。\n'
+                ;;
+            *) printf '无效选项，请重新输入。\n' ;;
+        esac
+    done
+}
+
+menu_loop() {
+    local choice code
+    MENU_SESSION_DIR=$(mktemp -d)
+    trap 'rm -rf -- "$MENU_SESSION_DIR"' EXIT
+    trap 'MENU_INTERRUPTED=1' INT
+    while [ "$MENU_EOF" = "0" ]; do
+        ACTION=""
+        UPDATE_ONLY=0
+        KEEP_INSTANCES=0
+        CONFIRM_WORD=""
+        show_menu
+        if ! menu_read '> ' choice; then
+            continue
+        fi
+        case "$choice" in
+            1) ACTION="install" ;;
+            2) ACTION="status" ;;
+            3) ACTION="rollback" ;;
+            4) ACTION="uninstall" ;;
+            5) ACTION="uninstall"; KEEP_INSTANCES=1 ;;
+            0) return 0 ;;
+            *) printf '无效选项，请重新输入。\n'; continue ;;
+        esac
+        if ! action_summary; then
+            continue
+        fi
+        while true; do
+            TASK_RESULT_DIR=$(mktemp -d "$MENU_SESSION_DIR/result-XXXXXX")
+            # Do not put this subshell in an if/|| condition: Bash would disable
+            # errexit inside every task function and allow failed steps to continue.
+            set +e
+            (
+                set -Eeuo pipefail
+                execute_action
+            )
+            code=$?
+            set -e
+            show_result "$code"
+            rm -rf -- "$TASK_RESULT_DIR" || log "结果临时目录清理失败: $TASK_RESULT_DIR"
+            [ "$RESULT_RETRY" = "1" ] || break
+        done
+    done
 }
 
 while [ $# -gt 0 ]; do
@@ -114,14 +344,6 @@ while [ $# -gt 0 ]; do
         *) die "未知参数: $1" ;;
     esac
 done
-
-if [ -z "$ACTION" ] && [ "$ORIGINAL_ARGC" -eq 0 ] && [ -t 0 ] && [ "$NON_INTERACTIVE" != "1" ]; then
-    show_menu
-fi
-[ -n "$ACTION" ] || ACTION="install"
-
-require_root
-mkdir -p "$(dirname "$LOCK_FILE")"
 
 acquire_lock() {
     exec 9>"$LOCK_FILE"
@@ -187,6 +409,12 @@ prompt_pool_size() {
     avail=$(root_avail_g)
     [ "${avail:-0}" -ge 1 ] || die "根分区至少需要 1G 可用（当前 ${avail:-0}G）"
     default=$(default_pool_g "$avail")
+    if [ -n "$MENU_SESSION_DIR" ] && [ -f "$MENU_SESSION_DIR/pool-size" ]; then
+        read -r size < "$MENU_SESSION_DIR/pool-size" || true
+        if [[ "$size" =~ ^[1-9][0-9]*$ ]] && [ "${#size}" -le "${#avail}" ] && [ "$size" -le "$avail" ]; then
+            default="$size"
+        fi
+    fi
     if [ "$NON_INTERACTIVE" = "1" ]; then
         POOL_SIZE="${default}GiB"
         log "存储池大小 ${default}G（默认，可用 ${avail}G）"
@@ -194,14 +422,15 @@ prompt_pool_size() {
     fi
     while true; do
         size=""
-        read -rp "设置存储池大小[单位G][默认:${default}G]: " size || die "无法读取存储池大小"
+        read -rp "设置存储池大小[单位G][默认:${default}G]（0 取消）: " size || die "无法读取存储池大小"
+        [ "$size" != "0" ] || cancel_task
         if [ -z "$size" ]; then
             size="$default"
         elif ! [[ "$size" =~ ^[1-9][0-9]*$ ]]; then
             echo "无效，请重新输入"
             continue
-        elif [ "$size" -lt 1 ] || [ "$size" -gt "$avail" ]; then
-            echo "无效，请重新输入"
+        elif [ "${#size}" -gt "${#avail}" ] || [ "$size" -gt "$avail" ]; then
+            echo "请输入 1 至 ${avail} 的整数"
             continue
         fi
         while true; do
@@ -210,6 +439,9 @@ prompt_pool_size() {
             case "$confirm" in
                 ""|Y|y)
                     POOL_SIZE="${size}GiB"
+                    if [ -n "$MENU_SESSION_DIR" ]; then
+                        printf '%s\n' "$size" > "$MENU_SESSION_DIR/pool-size"
+                    fi
                     log "存储池大小 ${size}G"
                     return
                     ;;
@@ -335,7 +567,7 @@ PY
 download_agent() {
     local dest="$1" base tmp
     base=$(download_base)
-    tmp=$(mktemp -d)
+    tmp=$(mktemp -d "$TASK_WORK_DIR/download-XXXXXX")
     log "下载 ${base}/${ASSET_NAME}"
     if ! curl -fsSL -o "$tmp/$ASSET_NAME" "${base}/${ASSET_NAME}"; then
         rm -rf "$tmp"
@@ -542,6 +774,7 @@ install_packages() {
 }
 
 do_rollback() {
+    step '1/3 检查回滚备份'
     acquire_lock
     local target
     target="${1:-}"
@@ -551,6 +784,8 @@ do_rollback() {
     [ -f "$target/config.yaml" ] || die "备份缺少配置"
     [ -f "$target/particeps-agent.service" ] || die "备份缺少单元文件"
     [ -f "$target/state.db" ] || die "备份缺少管理库"
+    step '2/3 恢复程序、配置与管理数据'
+    task_state "已开始恢复文件，可能部分完成；备份: $target"
     mkdir -p "$AGENT_BIN_DIR" "$AGENT_CONFIG_DIR" "$(dirname "$AGENT_UNIT_FILE")" "$AGENT_DATA_DIR"
     cp -p "$target/particeps-agent" "$AGENT_BINARY"
     chmod 0755 "$AGENT_BINARY"
@@ -562,11 +797,14 @@ do_rollback() {
         cp -p "$target/metrics.db" "$(metrics_db_path)"
     fi
     if command -v systemctl >/dev/null 2>&1; then
+        step '3/3 核对服务状态'
         systemctl daemon-reload 2>/dev/null || true
         if systemctl is-active --quiet "$AGENT_SERVICE" 2>/dev/null; then
             systemctl restart "$AGENT_SERVICE" || die "回滚后重启失败。备份: $target"
+            verify_active_service
         fi
     fi
+    task_state "已恢复备份: $target"
     log "已从 $target 回滚"
 }
 
@@ -576,8 +814,8 @@ confirm_purge() {
         return
     fi
     local answer
-    read -rp "输入 PURGE 继续全部卸载: " answer
-    [ "$answer" = "PURGE" ] || die "已取消卸载"
+    read -rp "输入 PURGE 继续全部卸载（其他输入取消）: " answer || cancel_task
+    [ "$answer" = "PURGE" ] || cancel_task
 }
 
 instance_names() {
@@ -654,15 +892,17 @@ report_foreign_instances() {
 
 purge_incus() {
     log "开始卸载 Incus"
+    task_state 'particeps 已卸载，正在清除 Incus；包或数据清理可能部分完成'
     systemctl stop incus incus.socket incus-user incus-user.socket 2>/dev/null || true
     if command -v apt-get >/dev/null 2>&1; then
         export DEBIAN_FRONTEND=noninteractive
-        apt-get purge -y incus incus-base incus-client incus-extra || true
-        apt-get autoremove -y || true
-        apt-get purge -y lxcfs || true
+        apt-get purge -y incus incus-base incus-client incus-extra || die "卸载 Incus 包失败，未继续删除数据目录"
+        apt-get autoremove -y || die "清理 Incus 依赖失败，未继续删除数据目录"
+        apt-get purge -y lxcfs || die "卸载 lxcfs 失败，未继续删除数据目录"
     fi
     umount /var/lib/lxcfs 2>/dev/null || true
     rm -rf /var/lib/incus /var/log/incus /etc/incus /run/incus /var/cache/incus /var/lib/lxcfs
+    task_state 'particeps 与 Incus 已卸载并清理数据目录'
     log "Incus 已卸载并清理数据目录"
 }
 
@@ -685,66 +925,102 @@ prompt_remove_incus() {
 }
 
 do_uninstall() {
+    step '1/3 检查卸载范围'
     acquire_lock
     if [ "$KEEP_INSTANCES" = "1" ]; then
         log "只卸 Agent，保留实例与数据"
     else
         confirm_purge
+        step '2/3 删除 particeps 专用资源'
+        task_state '已开始删除 particeps 项目资源，可能部分完成；不会自动恢复已删除资源'
         delete_particeps_instances
         delete_particeps_resources
     fi
+    step '3/3 停止并移除 Agent'
+    if [ "$KEEP_INSTANCES" = "1" ]; then
+        task_state '正在停止并移除 Agent；实例、配置和数据保留'
+    fi
     if command -v systemctl >/dev/null 2>&1; then
-        systemctl stop "$AGENT_SERVICE" 2>/dev/null || true
+        if [ -f "$AGENT_UNIT_FILE" ] || systemctl is-active --quiet "$AGENT_SERVICE"; then
+            systemctl stop "$AGENT_SERVICE" || die "无法停止 Agent，未移除程序与数据"
+            if systemctl is-active --quiet "$AGENT_SERVICE"; then
+                die "Agent 仍在运行，未移除程序与数据"
+            fi
+        fi
         systemctl disable "$AGENT_SERVICE" 2>/dev/null || true
-        systemctl daemon-reload 2>/dev/null || true
     fi
     rm -f "$AGENT_UNIT_FILE"
     rm -rf "$AGENT_BIN_DIR"
+    if command -v systemctl >/dev/null 2>&1; then
+        systemctl daemon-reload
+    fi
     if [ "$KEEP_INSTANCES" = "1" ]; then
+        task_state "Agent 已移除；实例、配置和数据保留在 ${AGENT_CONFIG_DIR} 与 ${AGENT_DATA_DIR}"
         log "已移除程序与服务；配置与数据保留在 ${AGENT_CONFIG_DIR} 和 ${AGENT_DATA_DIR}"
         return
     fi
     rm -rf "$AGENT_CONFIG_DIR" "$AGENT_DATA_DIR"
+    task_state '已全部卸载 particeps 受管资源，保留 Incus'
     log "已全部卸载 particeps 受管资源"
     prompt_remove_incus
 }
 
 do_update() {
+    step '1/5 检查升级条件'
     preflight_existing
     acquire_lock
-    local staged was_active=0
-    staged=$(mktemp)
-    download_agent "$staged"
-    backup_existing
-    mv "$staged" "$AGENT_BINARY"
-    chmod 0755 "$AGENT_BINARY"
+    local staged="$TASK_WORK_DIR/agent" was_active=0
     if systemctl is-active --quiet "$AGENT_SERVICE" 2>/dev/null; then
         was_active=1
+    fi
+    step '2/5 下载并校验 Release'
+    download_agent "$staged"
+    step '3/5 备份现有安装'
+    task_state '正在创建升级备份；现有程序、配置与服务尚未替换' 1
+    backup_existing
+    step '4/5 替换 Agent 程序'
+    task_state "已开始替换 Agent；升级前备份: $UPGRADE_BACKUP"
+    mv "$staged" "$AGENT_BINARY"
+    chmod 0755 "$AGENT_BINARY"
+    step '5/5 核对服务状态'
+    if [ "$was_active" = "1" ]; then
         systemctl restart "$AGENT_SERVICE" || die "Agent 重启失败。备份: $UPGRADE_BACKUP"
-        sleep 1
-        systemctl is-active --quiet "$AGENT_SERVICE" || die "Agent 未能保持运行。备份: $UPGRADE_BACKUP"
+        verify_active_service
+        task_state "Agent 已更新且服务运行正常；升级前备份: $UPGRADE_BACKUP"
     else
         log "Agent 原本已停止，本次保持停止"
+        task_state "Agent 已更新并保持停止；升级前备份: $UPGRADE_BACKUP"
     fi
     log "仅 Agent 更新完成；实例、网桥、存储池和配置值未改动"
 }
 
 do_fresh() {
+    step '1/6 检查安装条件'
     [ "$UPDATE_ONLY" = "0" ] || die "未找到标准安装；--update-only 不会执行首次安装"
     acquire_lock
     if [ "$SKIP_HOST" != "1" ]; then
         host_preflight
-        prompt_pool_size
+        if ! command -v incus >/dev/null 2>&1 || ! incus storage show "$INCUS_POOL" >/dev/null 2>&1; then
+            prompt_pool_size
+        fi
+        step '2/6 准备系统依赖'
+        task_state '系统依赖可能已安装或部分更新；尚未写入 Agent'
         install_packages
+    fi
+    local staged="$TASK_WORK_DIR/agent"
+    step '3/6 下载并校验 Release'
+    download_agent "$staged"
+    step '4/6 准备 Incus 资源'
+    if [ "$SKIP_HOST" != "1" ]; then
+        task_state '已安装依赖，Incus 专用资源可能部分创建；尚未写入 Agent'
         ensure_incus_resources
         setup_cgroup
     fi
+    step '5/6 写入 Agent 与配置'
+    task_state '正在写入 Agent、配置和管理员；安装可能部分完成'
     mkdir -p "$AGENT_BIN_DIR" "$AGENT_DATA_DIR/backups"
     chmod 0755 "$AGENT_BIN_DIR"
     chmod 0700 "$AGENT_DATA_DIR" "$AGENT_DATA_DIR/backups"
-    local staged
-    staged=$(mktemp)
-    download_agent "$staged"
     mv "$staged" "$AGENT_BINARY"
     chmod 0755 "$AGENT_BINARY"
     if [ ! -f "$AGENT_CONFIG_FILE" ]; then
@@ -757,21 +1033,64 @@ do_fresh() {
     if command -v systemctl >/dev/null 2>&1; then
         systemctl daemon-reload
         systemctl enable --now "$AGENT_SERVICE"
+        step '6/6 核对服务状态'
+        verify_active_service
     fi
+    task_state 'Agent 安装完成，服务运行正常'
     print_finish "$INSTALL_ADMIN_PASSWORD" "$INSTALL_ADMIN_EXISTING"
 }
 
-case "$ACTION" in
-    status) show_status; exit 0 ;;
-    rollback) do_rollback; exit 0 ;;
-    uninstall) do_uninstall; exit 0 ;;
-    install)
-        if installed; then
-            [ "$SKIP_HOST" = "1" ] || host_preflight
-            do_update
-        else
-            do_fresh
-        fi
-        ;;
-    *) die "未知动作: $ACTION" ;;
-esac
+verify_active_service() {
+    sleep 1
+    systemctl is-active --quiet "$AGENT_SERVICE" || die "Agent 未能保持运行${UPGRADE_BACKUP:+。备份: $UPGRADE_BACKUP}"
+}
+
+execute_action() {
+    TASK_STEP="准备操作"
+    TASK_STATE="尚未修改程序、服务或 Incus 资源"
+    TASK_ERROR=""
+    TASK_RETRY=1
+    TASK_WORK_DIR=""
+    TASK_LOG=""
+    TASK_LOG_PID=""
+    UPGRADE_BACKUP=""
+    trap 'finish_task "$?"' EXIT
+    trap 'unexpected_error "$?" "$LINENO"' ERR
+    trap 'cancel_task 130' INT
+    trap 'cancel_task 143' TERM
+    require_root
+    mkdir -p "$LOG_DIR" "$(dirname "$LOCK_FILE")"
+    chmod 0700 "$LOG_DIR"
+    TASK_LOG=$(mktemp "$LOG_DIR/$(date +%Y%m%d-%H%M%S)-${ACTION}-XXXXXX")
+    chmod 0600 "$TASK_LOG"
+    # Record diagnostics only. stdout contains the one-time administrator password.
+    exec 8>&2
+    exec 2> >(trap '' INT TERM; exec tee -a "$TASK_LOG" >&8)
+    TASK_LOG_PID=$!
+    TASK_WORK_DIR=$(mktemp -d)
+    case "$ACTION" in
+        status)
+            step '1/1 查询实际状态'
+            show_status
+            ;;
+        rollback) do_rollback ;;
+        uninstall) do_uninstall ;;
+        install)
+            if installed; then
+                [ "$SKIP_HOST" = "1" ] || host_preflight
+                do_update
+            else
+                do_fresh
+            fi
+            ;;
+        *) die "未知动作: $ACTION" ;;
+    esac
+}
+
+if [ -z "$ACTION" ] && [ "$ORIGINAL_ARGC" -eq 0 ] && [ -t 0 ] && [ "$NON_INTERACTIVE" != "1" ]; then
+    menu_loop
+else
+    [ -t 0 ] || NON_INTERACTIVE=1
+    [ -n "$ACTION" ] || ACTION="install"
+    execute_action
+fi
