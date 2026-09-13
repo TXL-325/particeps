@@ -487,7 +487,7 @@ exec /bin/cp "$@"
     def test_menu_interrupt_cancels_child_cleans_staging_and_returns(self):
         self.tool("curl", r'''
 echo $$ > "$TEST_ROOT/download-pid"
-echo 'mock download waiting' >&2
+echo 'mock download waiting'
 exec /bin/sleep 30
 ''')
         session = self.menu()
@@ -495,6 +495,8 @@ exec /bin/sleep 30
         session.expect("回车开始更新")
         session.send("\n")
         session.expect("下载 Agent…")
+        # The progress message precedes curl; wait until the mock has written its PID.
+        session.expect("mock download waiting")
         download_pid = int((self.root / "download-pid").read_text())
         session.send("\x03")
         session.expect("更新已取消。")
@@ -507,8 +509,9 @@ exec /bin/sleep 30
         session.expect("回车返回菜单")
         session.send("\n")
         session.expect("0) 退出")
-        session.send("0\n")
-        self.assertEqual(session.wait(), 0)
+        session.expect("请选择 [0-5]：")
+        session.send("\x03")
+        self.assertEqual(session.wait(), 130)
         self.assertEqual(list(self.tmp.iterdir()), [])
 
     @unittest.skipUnless(os.name == "posix", "requires a POSIX controlling terminal")

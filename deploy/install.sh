@@ -353,12 +353,16 @@ show_result() {
 
 run_task() {
     TASK_RESULT_DIR=$(mktemp -d "$MENU_SESSION_DIR/result-XXXXXX")
+    # The task handles terminal SIGINT; keep its waiting menu alive.
+    # Use a caught signal so child commands do not inherit SIGINT as ignored.
+    trap ':' INT
     set +e
     (
         set -Eeuo pipefail
         execute_action
     )
     LAST_TASK_CODE=$?
+    trap 'exit_script' INT
     set -e
 }
 
