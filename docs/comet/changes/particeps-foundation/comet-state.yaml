@@ -1,11 +1,11 @@
 schema: comet.native.v4
 name: particeps-foundation
 language: zh-CN
-phase: build
-status: active
-state_version: 33
+phase: shape
+status: await-user
+state_version: 35
 brief: brief.md
-shape_confirmation_hash: 8da04b39db9e80d38d405507bdb94976ed67df29831bc67e3f1e0c2f183e1b68
+shape_confirmation_hash: 09084238a6c42fa02148f8162b2ad47a1a2af96e661ff294709b71f8dba84175
 spec_changes:
   - capability: agent-architecture
     operation: create
@@ -22,16 +22,16 @@ workspace:
   target_branch: null
   finish: null
 loop:
-  stage: building
-  goal_cycle: 13
-  iteration: 1
+  stage: await-user
+  goal_cycle: 14
+  iteration: 0
   attempt: 0
   retry_epoch: 0
   failed_iteration_count: 0
   no_progress_count: 0
   execution_failure_count: 0
   previous_unresolved_ids: []
-  next_action: submit-builder-candidate
+  next_action: confirm-shape
 acceptance:
   - id: A1
     source: brief.md
@@ -319,6 +319,15 @@ history:
       text: Native Shape artifacts changed
       truncated: false
     completed_at: 2026-09-13T06:27:28.655Z
+  - goal_cycle: 13
+    iteration: 1
+    attempt: 0
+    outcome: recovery
+    unresolved_ids: []
+    summary:
+      text: Native Shape artifacts changed
+      truncated: false
+    completed_at: 2026-09-13T09:44:23.204Z
 history_overflow:
   dropped_entries: 0
   first_dropped_at: null
