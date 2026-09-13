@@ -2,7 +2,7 @@
 
 交付可在 Debian 13 实验母机运行的 particeps Agent，提供 **GitHub Release 安装运维脚本**、基础实例管理和**指定 IPv4 入口的端口闭环**：创建、共享转发、追加/编辑、停止/启动、删除清理，以及当前范围的 Web/API、权限和凭据保护。
 
-状态：用户已确认把部署脚本作为高于 A1–A12 的独立验收项。正式 Shape 确认前不实现、不打 tag、不在实验母机执行破坏性卸载。实际阶段与验收结论以 Runtime 管理的 comet-state.yaml 为准。旧验收与新证据见[进度同步](../../../quality/native-progress-sync-2026-09-12.md)。
+状态：用户于 2026-09-13 明确选择保留最新提交 `58bab0a` 的行为并同步正式规格；本次据此更新部署验收 A13，A1–A12 保留。实际阶段、确认边界与验收结论以 Runtime 管理的 comet-state.yaml 为准。候选、验证证据与接续问题见[当前交接](../../../quality/current-handoff.md)。
 
 # 范围
 
@@ -10,13 +10,20 @@
 
 > 先同步过时说明和证据，再重新划定交付范围
 
-原首期目标覆盖 81 项。完整原 brief、来源覆盖、决定与三份 Spec 已保存在[首期基线](../../../planning/first-release/brief.md)，来源版本为 Git `8795041`，本次源码核对至 `ea850a0`。本次边界保留原产品承诺，通过[交付计划](../../../planning/delivery-plan.md)逐项记录去向；它缩小单次交付边界，不取消原需求。
+2026-09-13 恢复请求及选择：
+
+> 恢复项目进度
+>
+> 保留最新提交的行为，并同步正式规格
+
+原首期目标覆盖 81 项。完整原 brief、来源覆盖、决定与三份 Spec 已保存在[首期基线](../../../planning/first-release/brief.md)，来源版本为 Git `8795041`；本轮源码核对至 `58bab0a`（Release `v0.1.1`）。本次边界保留原产品承诺，通过[交付计划](../../../planning/delivery-plan.md)逐项记录去向；它缩小单次交付边界，不取消原需求。安装脚本的新默认值与显式卸载例外以本次决定为准，不改写首期历史基线。
 
 本 change 的验收为局部 A1–A13；A13 优先于其余门槛。提到“原 A…”时专指首期基线。旧 17 passed / 56 failed / 8 blocked 是第一轮历史，不能转换为当前通过数。
 
 ## 本次交付
 
 - GitHub Release 安装脚本：首次安装、仅升级 Agent、状态、从最近升级备份回滚、卸载；无参数终端五项菜单；打 tag 后 Actions 上传 linux amd64 二进制、install.sh 和 SHA256。
+- 首装存储池按根分区可用空间建议大小并允许输入；依据母机上联网卡 IPv6 地址设置网桥 IPv6 NAT。默认通过所有 IPv4 地址提供 HTTP 面板，初始管理员密码只在安装终端展示；全卸后另行询问是否清除 Incus，非交互保留 Incus。
 - 独立 Go Agent、嵌入 Vue Web、/api/v1、受管 Incus 系统容器身份和已有资源边界。
 - Alpine 与 Debian 13 初始系统选项及真实创建，默认 Alpine；正常批量创建至少两台并逐台查询结果。
 - 当前操作的管理员会话、只读/管理 Token、撤销、会话来源校验，以及初始凭据的受保护交付、失效和清除。
@@ -30,7 +37,7 @@
 
 资源改配与压力验证；完整批量生命周期/任务恢复/重装；SSH 与 Web 终端；指定出口 SNAT、独立 IPv4、IPv6/NAT66、模式约束与来源限制；完整监控/历史/流量；8–16 台集成与剩余空间预算。原 A56 的完整首期安装语义仍归 S7 主归属；本次 A13 只覆盖 GitHub Release 脚本这一切片。它们的完整文字保留在首期基线，并有唯一主归属，不改成已取消或全项目非目标。
 
-当前只承诺已核对实验入口的 IPv4 DNAT 管理，不宣称严格 IPv4-only、指定 IPv4 出口、公网连通或 IPv6 自动分配已实现。设置中未完成的能力必须明确说明，不能返回虚假成功。
+当前 Agent 只承诺已核对实验入口的 IPv4 DNAT 管理。安装脚本的 IPv6 地址检测和网桥 `auto`/NAT 设置不代表 Agent 已实现实例 IPv6 地址池、模式约束或生命周期管理，也不证明公网 IPv6 可达。严格 IPv4-only、指定 IPv4 出口等仍按后续交付完成。设置中未完成的能力必须明确说明，不能返回虚假成功。
 
 ## Source coverage
 
@@ -51,23 +58,24 @@
 | N11 | 原 E1及原架构的进程/业务流量边界；原 A57 的当前 IPv4 管理部分 | complete | Agent 停止与重启 | agent-architecture：运行与配置；验证 | A11 | covered；局部边界见验收正文，原完整要求继续保留 |
 | N12 | 原 U14a/U14c/U22/E1及本次范围整理请求；原 A25/A26/A42/A56 的本次实验记录部分 | complete | 可追溯的实验交付 | project-foundation：验证与后续边界；agent-architecture：验证 | A12 | covered；局部边界见验收正文，原完整要求继续保留 |
 | N13 | 原完整首期来源与本次重新划定请求 | complete | 原 81 项不丢失，每项有主归属及跨阶段依赖 | project-foundation：首期承诺与本次边界 | A12 | covered；完整基线和交付计划共同保存，后续未实现不标过 |
-| N14 | 用户 2026-09-12 部署脚本讨论；原 A56 的安装/更新/备份切片；runman-agent `install.sh` 为对照 | complete | GitHub Release 安装、升级、状态、回滚、卸载与五项菜单 | project-foundation：部署与发布；agent-architecture：部署与发布 | A13 | covered；对照仓库不修改，不继承 Token/IPv6/Podman/自动更新 |
+| N14 | 用户 2026-09-12 部署脚本讨论；原 A56 的安装/更新/备份切片；runman-agent `install.sh` 为对照 | complete | GitHub Release 安装、升级、状态、回滚、卸载与五项菜单 | project-foundation：部署与发布；agent-architecture：部署与发布 | A13 | covered；固定 16 GiB、禁用 IPv6、绝不卸载 Incus 的旧语义由 N15 取代，其余保留 |
+| N15 | 用户 2026-09-13 选择保留 `58bab0a`；完整读取该提交的 install.sh、config、main、bootstrap 及对应改动 | complete | 存储池交互/默认值、IPv6 检测与既有桥补配、HTTP 默认监听、一次展示管理员密码、全卸后可选清除 Incus | project-foundation：部署与发布；agent-architecture：部署与发布、接口与凭据；agent-management：认证与凭据 | A13 | covered；覆盖 D43/D47 中冲突的安装限制，Agent 常规资源归属边界保留 |
 | R1 | 当前源码、F03 报告、证据 JSON、功能审阅和实验环境文档 | complete | 核对已有实现与记录的证明范围 | — | — | background；本轮不把历史结果冒称重新测试 |
 | R2 | `D:\Project\NET鸡\runman-agent\runman-agent代码\install.sh` 与升级测试 | complete | 升级备份、ELF 校验、失败不改现网、卸载分层的对照实现 | — | — | background；只吸收已确认的运维行为，不把平台功能带入本次 |
 
 # 非目标
 
-全项目仍不接管既有 Incus/runman-agent 实例、不修改参考仓库，不提供 Podman/KVM、母机终端或母机进程列表、全量进程历史、按进程网络归因、计费、实例磁盘备份迁移、NAT64/NAT46、未知实例自动删除或周期性自动更新。原非目标以首期基线为完整依据。
+Agent 常规操作仍不接管既有 Incus/runman-agent 实例；不修改参考仓库，不提供 Podman/KVM、母机终端或母机进程列表、全量进程历史、按进程网络归因、计费、实例磁盘备份迁移、NAT64/NAT46、未知实例自动删除或周期性自动更新。安装脚本的显式全卸及可选 Incus 清除属于下文 A13 的单独边界。
 
-安装脚本不提供平台对接 Token、IPv6 探测/向导、镜像刷新、rfw、apt 卸载 Incus，也不从本地路径绕过 GitHub Release。不新增自动升级守护进程。
+安装脚本不提供平台对接 Token、完整 IPv6 配置向导、镜像刷新或 rfw，也不从本地路径绕过 GitHub Release。不新增自动升级守护进程。自动检测母机 IPv6 与全卸后的可选 Incus 清除已纳入 A13，不再列为非目标。
 
-本次不创建 Supervisor/Child、未来 change 或额外 worktree，不在范围确认前实现新功能、打 Release、执行实机破坏性卸载或归档。
+本次不创建 Supervisor/Child、未来 change 或额外 worktree。同步规格不代表重新发布、执行实机破坏性卸载或归档；这些动作仍按实际验收与授权边界执行。
 
 # 验收示例
 
 以下为本次交付的局部 A1–A13。A13 优先实现。全部场景须有当前候选的真实结论；原编号与本次编号的映射见交付计划。
 
-- A13：在 Debian 13 amd64 上，通过 GitHub Release 的安装脚本完成首次安装、仅升级 Agent、查看状态、从最近一次升级备份回滚，以及卸载。打版本 tag 后 GitHub Actions 构建 linux amd64，并上传 Agent 二进制、install.sh 和 SHA256。脚本只从 Release 下载；SHA256 或 ELF64 校验失败时不替换现有程序，不改配置与后端资源。首次安装仅在缺失时创建 particeps 项目、particepsbr0（10.80.0.0/24 NAT、IPv6 关闭）和 16 GiB 的 particeps-pool；同名资源已存在则不修改，配置冲突则拒绝并保持原状；已有 `/etc/particeps/config.yaml` 不覆盖。升级前备份程序、systemd 单元、配置和管理库（SQLite 在线备份含 WAL，目录权限 0700），不含小鸡磁盘；替换程序后不改实例、网桥、存储池和配置值；原已停止的 Agent 保持停止；服务重启失败不得报告成功，并给出备份路径。`--status` 显示 Agent/Incus 服务、监听地址和最近备份。`--rollback` 从最近升级备份恢复程序、单元、配置和管理库。无参数且在终端时提供五项菜单：安装/升级、状态、回滚、全部卸载、只卸 Agent。卸载默认删除 Agent、配置、数据、particeps 项目内受管实例、particepsbr0、particeps-pool 和 particeps 项目，不 apt 卸载 Incus，不触碰其他项目或其他工具的实例；执行前必须输入 PURGE。`--keep-instances` 只停止并移除程序与服务，保留实例、网桥、池和管理数据。并发安装/升级被锁拒绝。
+- A13：在 Debian 13 amd64 上，通过 GitHub Release 的安装脚本完成首次安装、仅升级 Agent、查看状态、从最近一次升级备份回滚，以及卸载。打版本 tag 后 GitHub Actions 构建 linux amd64，并上传 Agent 二进制、install.sh 和 SHA256。脚本只从 Release 下载；SHA256 或 ELF64 校验失败时不替换现有程序，不改配置与后端资源。首次安装使用 particeps 项目、particepsbr0（10.80.0.0/24 IPv4 NAT）和 LVM thin 的 particeps-pool。新池按根分区可用整 GiB 的 30% 向下取整建议大小，下限 1 GiB、上限 25 GiB且不超过可用空间；可用不足 1 GiB 时拒绝。交互允许输入 1 至可用 GiB 的整数并确认，非交互使用建议值；已有 lvm 池保留，其他驱动拒绝。检测母机非回环、非容器/虚拟网桥接口上的 scope global IPv6（含 ULA）；有地址时新桥使用 ipv6.address=auto、ipv6.nat=true，无地址时新桥禁用 IPv6。既有桥的 IPv4 地址与 NAT 必须匹配；只有检测到上述 IPv6 且原 ipv6.address 为空/none 时补配 IPv6，其余配置保持。已有项目保留，已有 `/etc/particeps/config.yaml` 不覆盖。新配置监听 0.0.0.0:8792，HTTP 会话 Cookie 默认非 Secure，HTTPS 部署显式启用 Secure。安装显示在用非虚拟网卡的 IPv4 面板地址；无管理员时生成 20 位密码，经 bootstrap-only 写入哈希，仅在安装终端展示，不写 admin-bootstrap.txt；已有管理员不重置或重复交付。升级前备份程序、systemd 单元、配置和管理库（SQLite 在线备份含 WAL；存在的 metrics.db 也备份；目录权限 0700），不含小鸡磁盘；升级不改实例、网桥、池和配置，原已停止的 Agent 保持停止，服务重启失败不得报告成功且给出备份路径。`--status` 显示 Agent/Incus 服务、监听地址和最近备份；`--rollback` 恢复程序、单元、配置和管理库。无参数终端提供安装/升级、状态、回滚、全部卸载、只卸 Agent 五项操作。全卸先要求 PURGE，再删除 particeps 项目内全部实例、专用桥/池/项目及 Agent、配置和数据；此步骤保留其他项目和 Incus。完成后列出其他项目实例并单独询问是否卸载 Incus：默认否，非交互保留，仅明确回答 y/Y 才 apt purge Incus/lxcfs 并清除 Incus 数据目录，此选择会清除其他项目实例，必须先说明影响。`--keep-instances` 只停止并移除程序与服务，保留实例、网络、池、配置和数据，不进入 Incus 清除流程。并发安装/升级被锁拒绝。测试须分别核对新旧资源、IPv6 有/无、管理员有/无、服务启停、保留/全卸及失败保护，mock 通过不代替实机结果。
 - A1：Linux amd64 Agent 在已准备的 Debian 13 实验母机启动，以同一二进制提供嵌入式 Web 和 /api/v1；管理 ID、Incus 实例与查询对象对应。创建、查询、启停和删除仅操作本项目受管资源，其他工具的实例与参考仓库保持原样。
 - A2：对本次创建、查询、端口修改、启停和删除接口，未认证请求被拒绝；只读 Token 只能查询，管理 Token 可按权限执行，撤销后立即失效。会话写入执行来源校验，不能绕过管理权限。
 - A3：管理员密码、API Token 和小鸡初始密码不进入普通查询或日志。自动生成的初始凭据加密暂存，只能由管理权限领取一次；领取后清除，过期后不可领取并清理暂存内容；错误、重试和迟到响应不重新暴露凭据。
@@ -83,7 +91,7 @@
 
 # 约束与不变量
 
-- Web 与 API 共用业务规则和授权；只操作可核对归属的本系统资源。
+- Web 与 API 共用业务规则和授权；Agent 常规操作只处理可核对归属的本系统资源。脚本全卸以专用 particeps 项目为边界，可选 Incus 清除必须经单独交互选择。
 - 正常业务流量通过 Incus/内核规则，Agent 不做逐包代理；停止 Agent 不应停止小鸡或拆除现存转发。
 - 同一入口共享 forward 的修改保留其他实例规则；固定 Incus 6.0.4 不把 If-Match 当作已验证的并发保障。
 - 状态先记录、后端终态与回读后再报告成功；结果不明保留占用并禁止盲目重试。不能删除 raw.lxc/cgroup 限制以绕过启动失败。
@@ -92,7 +100,7 @@
 - 原首期 81 项持续有效；部分覆盖不等于原验收通过，最终首期还需全量集成。
 - 当前完整 Spec 只描述本次交付；完整首期方案不作为本次归档后的已实现能力发布。
 - 安装/升级只从 GitHub Release 取程序；失败路径不得破坏已运行实例和现存转发。
-- 卸载默认破坏 particeps 受管实例和专用 Incus 资源，必须先确认词；`--keep-instances` 不得误走默认全删。
+- 全卸破坏 particeps 项目内全部实例和专用资源，必须先确认词；`--keep-instances` 不得误走全删或 Incus 清除。其他项目只有在全卸后的单独 Incus 清除选择中才会受影响，非交互必须保留 Incus。
 
 # 决策
 
@@ -106,20 +114,26 @@
 | D40 | 未来终端/重装的完整安全、网络组合与规模验证分别归后续交付 | 保留完整语义，不以局部证据提前标过 |
 | D41 | 在 A1–A12 内增加独立高优先验收 A13：GitHub Release 部署脚本 | 用户 2026-09-12 明确选择；Build 先做 A13 |
 | D42 | 本轮脚本做安装、仅升级 Agent、status、回滚，以及卸载 | 用户选择「1+2」全部纳入 |
-| D43 | 卸载默认全部删除 particeps 受管实例、专用网桥/池/项目、Agent 与数据；执行前输入 PURGE；`--keep-instances` 只卸 Agent | 用户明确覆盖原「移除默认保留实例」的默认值；不 apt 卸载 Incus |
+| D43 | 卸载默认全部删除 particeps 资源；执行前输入 PURGE；`--keep-instances` 只卸 Agent | 2026-09-12 决定；实例范围及「不 apt 卸载 Incus」限制由 D48/D52 更新 |
 | D44 | 二进制只从 GitHub Release 下载；本轮加 tag 触发的 Actions 构建并上传 Agent、install.sh、SHA256 | 没有可用 Release 时安装/升级失败且不改现网 |
 | D45 | 升级备份含程序、单元、配置、管理库（WAL），不含小鸡盘；回滚恢复这四类 | 对照 runman 升级路径；失败不报告成功 |
 | D46 | 无参数终端提供五项菜单；非交互走参数 | 用户确认 |
-| D47 | 不继承 runman 的 Token、IPv6 向导、Podman、rfw、镜像刷新和自动更新服务 | 对照仓库只作行为参考 |
+| D47 | 不继承 runman 的 Token、完整 IPv6 向导、Podman、rfw、镜像刷新和自动更新服务 | 对照仓库只作行为参考；简单 IPv6 检测和网桥补配按 D50 纳入 |
+| D48 | 以 `58bab0a` 的安装行为作为新基线，同步当前正式规格和使用说明 | 用户 2026-09-13 明确选择；更新 A13，不将已发布等同于已验收 |
+| D49 | 新池建议为根分区可用整 GiB 的 30%，取整后最少 1、最多 25；允许交互输入与确认，非交互用建议值；已有 lvm 池保留 | 取代固定新建 16 GiB 的要求 |
+| D50 | 母机非虚拟上联存在 scope global IPv6（含 ULA）时，新桥启用 auto/NAT，既有未配 IPv6 的桥补配；其他既有 IPv6 保留 | 取代一律禁用 IPv6；检测到地址不证明公网出口，不扩展为 Agent IPv6 生命周期完成 |
+| D51 | 默认监听 0.0.0.0:8792、HTTP Cookie 非 Secure；首装显示面板 IPv4 地址与一次性管理员密码，管理员只存哈希、不写引导密码文件 | HTTPS 需显式启用 Secure；已有管理员不重置；对应 `--bootstrap-only` 初始化流程 |
+| D52 | 全卸删除 particeps 项目内全部实例；随后可单独选择清除 Incus 及其他项目数据，先列明影响；默认否、非交互保留，keep-instances 不进入此流程 | 取代绝不 apt 卸载 Incus 的限制；并非 Agent 日常可接管其他工具资源 |
 
-原 D1–D34 的产品选择及修正已完整保存在首期基线。D43 只改变本次安装脚本的卸载默认值，不修改首期基线正文。
+原 D1–D34 的产品选择及修正已完整保存在首期基线。D43 及 D48–D52 更新本次安装脚本边界，不修改首期基线正文。
 
 # 待解决问题
 
-无待解决的产品分歧。下列部署决定已由用户选定，待 Shape 确认后再生效。
+无待解决的产品分歧。用户已选择保留最新提交；完整更新后的验收边界由 Runtime 管理，不把规格同步当作验收通过。
 
 # 验证预期
 
-2026-09-12 范围整理时仅进行源码/证据核对和文档覆盖、链接、格式检查，没有连接母机、重跑 Go/Vue 或执行新功能测试。F03 的 Go 79 项、Vue 16 项和本地 TCP/UDP 记录是 2026-09-11 的留存证据。
+Build 仍先完成 A13 的实机成功/失败路径与新增行为检查，再完成 A1–A12。优先补齐首装失败不改资源、真实运行中回滚、卸载隔离、并发锁等证据；不能将缺失的保护改写成已接受的失败行为。随后补 Alpine/Debian 实际系统、真实浏览器操作、凭据清除与 Agent 停止/重启等证据。已有检查按候选影响复用，不机械重跑；Builder 交接不代替新的独立 Verifier。当前 13 项全通过只代表本次基础交付，完整首期仍按原 81 项验收。
 
-确认后 Build 先交付 A13：Release 资产、安装脚本菜单/参数、升级备份与失败路径、默认全卸与 `--keep-instances`。A13 未通过前，不把其余 12 项标为可归档。随后补 Alpine/Debian 实际系统、真实浏览器操作、凭据清除与 Agent 停止/重启等证据。已有证据是否可复用由影响范围和候选绑定决定。Builder 交接不代替新的独立 Verifier。当前 13 项全通过只代表本次基础交付，完整首期仍按原 81 项验收。
+
+各类证据要求见[架构规格的验证表](specs/agent-architecture/spec.md#验证)，检查选择遵守[协作约束](../../../knowledge/verification-and-workflow-constraints.md)。候选绑定、已执行检查及剩余问题维护在[当前交接](../../../quality/current-handoff.md)，日期结果保留在其链接的历史报告中，不在本 brief 重复维护测试次数或部署快照。

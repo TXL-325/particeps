@@ -1,8 +1,10 @@
 # 按功能分批检查与验收
 
+> 历史记录：本文件保留 2026-09-11 起的 F01–F08 审查计划和当时结果，后续日期补充也属于历史记录。当前交付归属以[交付计划](../planning/delivery-plan.md)为准，接续工作从[当前交接](current-handoff.md)进入。
+
 本轮请求：恢复 particeps-foundation 进度，对未充分验证的代码做深度检查，并按功能分批验收。日期：2026-09-11。
 
-2026-09-12 补充：下文 F01–F08 和 A1–A81 保留为原完整首期的功能审阅编号。用户已确认当前 foundation 的 12 项局部验收范围并授权进入 Build；编号映射见[交付计划](../planning/delivery-plan.md)，每个原 ID 的历史结果和新证据见[进度同步](native-progress-sync-2026-09-12.md)。本表不替代新旧任一轮的正式 Verify。
+2026-09-13 补充：下文 F01–F08 和 A1–A81 保留为原完整首期的功能审阅编号。当前 foundation 为 13 项局部验收，用户已选择按 58bab0a 同步高优先部署项 A13；编号映射见[交付计划](../planning/delivery-plan.md)，历史结果和最新恢复证据见[进度同步](native-progress-sync-2026-09-12.md)。阶段及确认边界读取 Runtime，本表不替代新旧任一轮的正式 Verify。
 
 恢复时 Native 处于 Build 修复阶段，第 2 轮候选；既有记录为 81 项中 17 passed、56 failed、8 blocked。这些是上一轮记录，不能当作当前代码已经通过。正式状态和验收报告仍由 Comet Runtime 管理；本文件记录功能批次、代码审查证据和开发期回归检查，不替代正式 Verify。
 

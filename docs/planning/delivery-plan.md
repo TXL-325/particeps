@@ -1,20 +1,8 @@
 # 首期交付计划
 
-日期：2026-09-12。用户已确认在当前 foundation 增加独立高优先验收 A13（GitHub Release 部署脚本），A1–A12 保留。确认不表示验收通过，也不自动创建后续 change。正式 Shape 以活动 change 的 brief/Spec 和 Runtime 为准。
+本页维护原首期验收的唯一主归属、依赖和局部覆盖关系。[完整首期 brief](first-release/brief.md)及其三份 Spec 保存原始来源与完整承诺；[当前 brief](../comet/changes/particeps-foundation/brief.md)定义本次交付，候选和证据从[当前交接](../quality/current-handoff.md)进入。
 
-## 当前调整
-
-保留 `particeps-foundation` 名称和当前工作区，把本次交付收敛为 **GitHub Release 安装运维脚本**、实验母机基础管理与指定 IPv4 入口的端口闭环。当前完整范围以活动 change 的 [brief](../comet/changes/particeps-foundation/brief.md) 和三份 Spec 为准，共 13 项局部验收，A13 优先。
-
-原 [完整首期 brief](first-release/brief.md) 与 [管理规格](first-release/specs/agent-management/spec.md)、[架构规格](first-release/specs/agent-architecture/spec.md)、[项目规格](first-release/specs/project-foundation/spec.md)保留全部产品语义、来源和原 A1–A81。来源为 Git `8795041` 的原正式产物，实现核对至 `ea850a0`；新副本只修正阶段叙述和交付组织说明，不取消原要求。[证据同步](../quality/native-progress-sync-2026-09-12.md)逐项保留第一轮结果及后续证据。
-
-“原 A…”始终指完整首期基线；“foundation/A…”指本次已确认范围。两套编号不混用，旧 17/56/8 不转换为新 13 项的通过数。当前阶段和正式结果由 Runtime 管理。
-
-## 为什么采用这个边界
-
-基础代码已形成，F03 已有共享入口、追加/编辑与清理的独立证据，适合形成一次完整交付。资源压力、任务恢复、终端、IPv6 和长期监控各有独立实现及验证条件；把它们留在同一次归档中，会继续阻止基础能力单独收尾。
-
-当前仍保留认证、凭据保护、Web/API 一致性和 Agent 重启场景，不能只挑现有测试已经通过的路径。Debian 13 实际创建、真实浏览器操作、凭据到期清理和重启连续性等证据或实现尚待补齐，因此范围确认不代表 foundation 已可归档。
+“原 A…”指首期基线，“foundation/A…”指本次局部编号。范围收敛允许基础能力独立交付，后续资源、任务、终端、网络和监控承诺继续保留；局部通过不转换为原 81 项通过。
 
 ## 后续安排与原验收唯一主归属
 
@@ -35,6 +23,8 @@
 
 原 A56 的主归属仍在 S7。foundation/A13 提前交付 GitHub Release 安装/升级/回滚/卸载切片，不取消 S7 的 8–16 台集成、剩余空间预算和全量复核。不新增自动升级守护进程。
 
+部署默认值、交互及 Incus 清除边界由[项目规格](../comet/changes/particeps-foundation/specs/project-foundation/spec.md#部署与发布)维护。脚本网桥准备不使 S5 的实例地址池、模式、路由和公网验收提前完成。
+
 S1 内分别记录 CPU、内存、盘与带宽证据；S2 按可恢复动作递进；S5 明确拆为直路由、NAT66、能力约束/组合和来源限制等增量后再启动。不要把整张路线图再次装进一个新的巨大 change。
 
 ## 当前 13 项门槛与原要求的关系
@@ -53,7 +43,7 @@ S1 内分别记录 CPU、内存、盘与带宽证据；S2 按可恢复动作递�
 | foundation/A10 | Web 与 API 操作闭环 | 原 A4/A5/A55 的本次操作部分 |
 | foundation/A11 | Agent 停止与重启 | 原 A57 的当前 IPv4 管理部分 |
 | foundation/A12 | 可追溯的实验交付 | 原 A25/A26/A42 的本次实验记录部分 |
-| foundation/A13 | GitHub Release 安装、升级、状态、回滚与卸载 | 原 A56 的安装/更新/备份切片；卸载默认全删为本次脚本决定，不改写首期基线 |
+| foundation/A13 | GitHub Release 安装、升级、状态、回滚与卸载及已确认的安装行为 | 原 A56 的安装/更新/备份切片；全卸及独立 Incus 清除选择为本次脚本决定，不改写首期基线 |
 
 “部分覆盖”是证据贡献，不是原条目完成。特别保留以下边界：
 
@@ -65,8 +55,6 @@ S1 内分别记录 CPU、内存、盘与带宽证据；S2 按可恢复动作递�
 - 原 A25/A26/A28/A42/A56/A57 的完整环境、规模和集成要求留在 S7；foundation/A13 不能把 8–16 台或剩余空间预算标过。
 - 原 A71/A77 的历史 passed 不直接继承，地址池与 IPv4-only 约束在对应网络交付中重新验证。
 
-## 确认后的执行方式
+## 执行边界
 
-确认的是本次 13 项边界（A13 优先）、完整首期承诺的保留与以上去向，以及按顺序启动小 change 的方式。当前不建立 children.yaml、额外 worktree 或未来 change，也不据此自动 merge、push 或归档。未来出现实际并行收益时再评估 Supervisor。
-
-用户此次明确确认对应活动 change 的完整范围，由 Runtime 持久化推进。若以后调整范围，先更新相关 brief、Spec、映射和验收，再重新准备确认，不能用本计划替代 Runtime 的确认边界。
+此表维护交付归属和依赖；正式需求与验收以当前 brief/Spec 为准，阶段和确认边界由 Runtime 管理。当前普通 change 顺序推进，不因路线图建立 children.yaml、额外 worktree 或未来 change，也不自动 merge、push 或归档。具体待办与检查证据见[当前交接](../quality/current-handoff.md)。

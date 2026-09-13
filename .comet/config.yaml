@@ -22,17 +22,19 @@ knowledge:
   # 可选值：local | remote
   provider: local
   local:
-    # 默认正式 Spec/归档之外，收录当前交付依据和标明日期的证据。
+    # 优先检索当前入口、交接、正式依据和操作文档；日期报告从交接链接按需读取。
     include:
       - README.md
-      - docs/knowledge/**/*.md
+      - docs/knowledge/project-context.md
+      - docs/knowledge/project-structure.md
+      - docs/knowledge/verification-and-workflow-constraints.md
+      - docs/quality/current-handoff.md
       - docs/planning/delivery-plan.md
       - docs/comet/changes/particeps-foundation/brief.md
       - docs/comet/changes/particeps-foundation/specs/*/spec.md
-      - docs/quality/native-progress-sync-2026-09-12.md
-      - docs/quality/f03-port-forwarding-2026-09-11.md
       - docs/development/network-lab.md
       - docs/development/build-and-test.md
+      - docs/development/authentication.md
 # Native 工作流配置，不会改变 Classic 的状态或行为。
 native:
   # Native 规格和 change 的存放根目录；运行时数据始终位于 .comet。

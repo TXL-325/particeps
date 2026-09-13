@@ -4,15 +4,15 @@ Web 管理员使用 bcrypt 密码和 12 小时会话；自动化客户端使用�
 
 ## 会话配置与登录限制
 
-`session_cookie_secure` 默认 `true`，反向代理终止 HTTPS 时也应保持此值。Agent 不依赖客户端提供的转发头来决定是否降低 Cookie 安全属性。直接 TLS 请求始终使用 Secure Cookie。
+默认配置为 `listen: 0.0.0.0:8792`、`session_cookie_secure: false`，提供普通 HTTP 面板。Agent 不依赖客户端提供的转发头来决定 Cookie 安全属性；直接 TLS 请求始终使用 Secure Cookie。
 
-通过远端普通 HTTP 实验网访问时，须在隔离的开发配置中显式设置：
+使用 HTTPS（包括反向代理终止 TLS）时，在配置中显式设置：
 
 ```yaml
-session_cookie_secure: false
+session_cookie_secure: true
 ```
 
-该选项只控制会话 Cookie，不会给 HTTP 提供加密；HTTPS 部署应恢复 `true`。
+该选项只控制会话 Cookie，不会给 HTTP 提供加密。已有配置在安装/升级中保留，不随默认值变化自动重写。
 
 登录入口按实际连接来源限制每分钟 5 次，整个 Agent 每分钟 30 次，同时最多执行 2 次密码校验；成功和失败尝试均计数。拒绝时返回 `429` 和 `Retry-After`。转发头不能绕过限制；经同一个反向代理接入的客户端共享该代理来源的限额。
 
@@ -20,9 +20,9 @@ session_cookie_secure: false
 
 ## 初次管理员初始化
 
-初始化先将密码写入数据目录中的 `admin-bootstrap.txt`，同步文件和目录后，再保存密码哈希。文件权限为 `0600`，非普通文件路径被拒绝。数据库写入失败时，下次启动复用已有密码文件；管理员查询失败时停止初始化。
+安装脚本先检查管理员是否存在。不存在时生成 20 位字母数字密码，通过临时环境变量 `PARTICEPS_ADMIN_PASSWORD` 调用 `particeps-agent --config /etc/particeps/config.yaml --bootstrap-only`，保存 bcrypt 哈希后退出；服务启动后，脚本在安装终端展示本次初始密码与面板 IPv4 地址。
 
-已有管理员时不再次初始化。该文件仍是运行凭据，应按私密文件保管；当前没有管理员改密 UI/API。
+新初始化不写 `admin-bootstrap.txt`，普通服务日志也不输出密码，需在安装时保存。已有管理员不重置或重复交付；已有旧版本密码文件不会因升级自动删除。直接从源码启动且还没有管理员时，应通过 `PARTICEPS_ADMIN_PASSWORD` 预先指定密码；不提供该变量时虽会生成随机密码，当前普通启动路径不会将其交付给操作者。当前没有管理员改密 UI/API。
 
 ## 初始实例凭据
 
