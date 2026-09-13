@@ -135,20 +135,56 @@ class InstallerTests(unittest.TestCase):
             "systemctl",
             r"""
 printf 'systemctl %s\n' "$*" >> "$TEST_CALLS"
-state="$TEST_ROOT/service-active"
+state_file() {
+  case "${1%.service}" in
+    particeps-agent) echo "$TEST_ROOT/service-active" ;;
+    incus) echo "$TEST_ROOT/incus-active" ;;
+    incus.socket) echo "$TEST_ROOT/incus-socket-active" ;;
+  esac
+}
 case "$1" in
   is-active)
-    active="${TEST_ACTIVE:-1}"
+    unit="${!#}"
+    state=$(state_file "$unit")
+    case "${unit%.service}" in
+      particeps-agent) active="${TEST_ACTIVE:-1}" ;;
+      incus) active="${TEST_INCUS_ACTIVE:-1}" ;;
+      incus.socket) active="${TEST_INCUS_SOCKET_ACTIVE:-1}" ;;
+    esac
     if test -f "$state"; then active=$(cat "$state"); fi
-    test "$active" = 1 ;;
-  restart)
-    test "${TEST_RESTART_FAIL:-0}" != 1
-    echo "${TEST_ACTIVE_AFTER_START:-1}" > "$state" ;;
-  enable) echo "${TEST_ACTIVE_AFTER_START:-1}" > "$state" ;;
-  stop)
-    test "${TEST_STOP_FAIL:-0}" != 1
-    echo 0 > "$state" ;;
-  disable|daemon-reload|show) exit 0 ;;
+    if test "$active" = 1; then
+      test "${2:-}" = --quiet || echo active
+      exit 0
+    fi
+    test "${2:-}" = --quiet || echo inactive
+    exit 3 ;;
+  start|restart|enable|stop)
+    operation="$1"
+    case "$operation" in
+      start) test "${TEST_START_FAIL:-0}" != 1 ;;
+      restart) test "${TEST_RESTART_FAIL:-0}" != 1 ;;
+      stop) test "${TEST_STOP_FAIL:-0}" != 1 ;;
+    esac
+    shift
+    for unit in "$@"; do
+      case "$unit" in --*) continue ;; esac
+      state=$(state_file "$unit")
+      if test "$operation" = stop; then
+        echo "${TEST_ACTIVE_AFTER_STOP:-0}" > "$state"
+      else
+        echo "${TEST_ACTIVE_AFTER_START:-1}" > "$state"
+      fi
+    done ;;
+  show)
+    case "$*" in
+      *--property=LoadState*)
+        case "${!#}" in
+          particeps-agent|particeps-agent.service) echo "${TEST_AGENT_LOAD_STATE:-loaded}" ;;
+          incus|incus.service) echo "${TEST_INCUS_LOAD_STATE:-loaded}" ;;
+          incus.socket) echo "${TEST_INCUS_SOCKET_LOAD_STATE:-loaded}" ;;
+        esac ;;
+    esac ;;
+  disable|daemon-reload) exit 0 ;;
   *) exit 0 ;;
 esac
 """,
@@ -335,9 +371,13 @@ exit 0
         self.assertNotIn("curl", calls)
 
     def test_status(self):
-        output, _ = self.run_script("--status")
-        self.assertIn("AGENT_SERVICE=", output)
+        output, calls = self.run_script("--status")
+        self.assertIn("AGENT_SERVICE=active", output)
+        self.assertIn("INCUS_SERVICE=active", output)
         self.assertIn("LISTEN=127.0.0.1:8792", output)
+        self.assertNotIn("启动 Incus", output)
+        self.assertNotIn("systemctl start", calls)
+        self.assertNotIn("systemctl stop", calls)
 
     def test_rollback_restores_binary_and_db(self):
         self.run_script("--update-only", "-y")
@@ -421,6 +461,170 @@ exit 0
         session.expect("0) 退出")
         session.send("0\n")
         self.assertEqual(session.wait(), 0)
+        self.assertEqual(list(self.tmp.iterdir()), [])
+
+    @unittest.skipUnless(os.name == "posix", "requires a POSIX controlling terminal")
+    def test_status_menu_controls_services_and_refreshes(self):
+        session = self.menu()
+        session.send("2\n")
+        session.expect("Agent：运行中")
+        session.expect("Incus：运行中")
+        session.expect("L 查看日志：")
+        session.send("invalid\n")
+        session.expect("请输入 1 到 4")
+        session.expect("L 查看日志：")
+        operations = (
+            ("2", "Incus 已停止。", "运行中", "已停止"),
+            ("1", "Incus 已启动。", "运行中", "运行中"),
+            ("4", "Agent 已停止。", "已停止", "运行中"),
+            ("3", "Agent 已启动。", "运行中", "运行中"),
+        )
+        for choice, result, agent_state, incus_state in operations:
+            with self.subTest(choice=choice):
+                session.send(choice + "\n")
+                session.expect(result)
+                session.expect("L 查看日志：")
+                session.send("\n")
+                session.expect("particeps 状态")
+                session.expect("Agent：" + agent_state)
+                session.expect("Incus：" + incus_state)
+                session.expect("L 查看日志：")
+        session.send("r\n")
+        session.expect("particeps 状态")
+        session.expect("L 查看日志：")
+        session.send("0\n")
+        session.expect("请选择 [0-5]：")
+        session.send("0\n")
+        self.assertEqual(session.wait(), 0)
+        calls = self.calls.read_text()
+        self.assertIn("systemctl stop incus.service incus.socket\n", calls)
+        self.assertIn("systemctl start incus.service incus.socket\n", calls)
+        self.assertIn("systemctl stop particeps-agent\n", calls)
+        self.assertIn("systemctl start particeps-agent\n", calls)
+        self.assertNotIn("systemctl enable", calls)
+        self.assertNotIn("systemctl disable", calls)
+        self.assertNotIn("incus --project", calls)
+        self.assertEqual((self.bin / "particeps-agent").read_text(), "old-agent")
+        self.assertIn("keep: original", self.config.read_text())
+        self.assertTrue(self.db.exists())
+        self.assertEqual(list(self.tmp.iterdir()), [])
+
+    @unittest.skipUnless(os.name == "posix", "requires a POSIX controlling terminal")
+    def test_status_menu_start_failure_allows_log_and_retry(self):
+        original_systemctl = (self.mock / "systemctl").read_text(encoding="utf-8")
+        self.tool("systemctl", '''
+if test "$1" = start; then echo 'injected service start failure' >&2; exit 1; fi
+''' + original_systemctl)
+        (self.mock / "flock").unlink()
+        self.env["TEST_ACTIVE"] = "0"
+        session = self.menu()
+        session.send("2\n")
+        session.expect("L 查看日志：")
+        session.send("3\n")
+        session.expect("启动 Agent 失败")
+        session.expect("L 查看日志：")
+        self.assertNotIn("Agent 已启动。".encode(), session.transcript)
+        session.send("l\n")
+        session.expect("injected service start failure")
+        session.expect("回车返回结果页：")
+        session.send("\n")
+        session.expect("L 查看日志：")
+        (self.mock / "systemctl").write_text(original_systemctl, encoding="utf-8")
+        session.send("r\n")
+        session.expect("Agent 已启动。")
+        session.expect("L 查看日志：")
+        session.send("\n")
+        session.expect("particeps 状态")
+        session.expect("Agent：运行中")
+        session.expect("L 查看日志：")
+        session.send("\x03")
+        self.assertEqual(session.wait(), 130)
+        self.assertEqual(list(self.tmp.iterdir()), [])
+
+    @unittest.skipUnless(os.name == "posix", "requires a POSIX controlling terminal")
+    def test_status_menu_checks_start_and_stop_results(self):
+        cases = (
+            ("3", "TEST_ACTIVE_AFTER_START", "0", "Agent"),
+            ("2", "TEST_ACTIVE_AFTER_STOP", "1", "Incus"),
+        )
+        for choice, setting, value, label in cases:
+            with self.subTest(choice=choice):
+                self.env[setting] = value
+                session = self.menu()
+                session.send("2\n")
+                session.expect("L 查看日志：")
+                session.send(choice + "\n")
+                session.expect(label + " 状态未确认")
+                session.expect("L 查看日志：")
+                self.assertNotIn((label + " 已启动。").encode(), session.transcript)
+                self.assertNotIn((label + " 已停止。").encode(), session.transcript)
+                session.send("\n")
+                session.expect("particeps 状态")
+                session.expect("L 查看日志：")
+                session.send("\x03")
+                self.assertEqual(session.wait(), 130)
+                self.env.pop(setting)
+
+    @unittest.skipUnless(os.name == "posix", "requires a POSIX controlling terminal")
+    def test_status_menu_missing_incus_does_not_start_it(self):
+        self.env["TEST_INCUS_LOAD_STATE"] = "not-found"
+        session = self.menu()
+        session.send("2\n")
+        session.expect("Incus：未安装")
+        session.expect("L 查看日志：")
+        session.send("1\n")
+        session.expect("Incus 未安装")
+        session.expect("L 查看日志：")
+        self.assertNotIn("systemctl start", self.calls.read_text())
+        session.send("\n")
+        session.expect("particeps 状态")
+        session.expect("L 查看日志：")
+        session.send("\x03")
+        self.assertEqual(session.wait(), 130)
+
+    @unittest.skipUnless(os.name == "posix", "requires a POSIX controlling terminal")
+    def test_status_menu_supports_incus_without_socket_unit(self):
+        self.env["TEST_INCUS_SOCKET_LOAD_STATE"] = "not-found"
+        session = self.menu()
+        session.send("2\n")
+        session.expect("L 查看日志：")
+        session.send("2\n")
+        session.expect("Incus 已停止。")
+        session.expect("L 查看日志：")
+        session.send("\n")
+        session.expect("Incus：已停止")
+        session.expect("L 查看日志：")
+        session.send("\x03")
+        self.assertEqual(session.wait(), 130)
+        calls = self.calls.read_text()
+        self.assertIn("systemctl stop incus.service\n", calls)
+        self.assertNotIn("systemctl stop incus.service incus.socket", calls)
+
+    @unittest.skipUnless(os.name == "posix", "requires a POSIX controlling terminal")
+    def test_status_menu_interrupt_waits_for_service_job_and_refreshes(self):
+        original_systemctl = (self.mock / "systemctl").read_text(encoding="utf-8")
+        self.tool("systemctl", '''
+if test "$1" = stop; then
+  echo 'mock service job waiting'
+  while ! test -f "$TEST_ROOT/finish-service-job"; do /bin/sleep 0.05; done
+fi
+''' + original_systemctl)
+        session = self.menu()
+        session.send("2\n")
+        session.expect("L 查看日志：")
+        session.send("4\n")
+        session.expect("mock service job waiting")
+        session.send("\x03")
+        session.read()
+        self.assertNotIn("Agent 已停止。".encode(), session.transcript)
+        (self.root / "finish-service-job").touch()
+        session.expect("Agent 已停止。")
+        session.expect("particeps 状态")
+        session.expect("Agent：已停止")
+        session.expect("L 查看日志：")
+        self.assertNotIn("正在取消安装".encode(), session.transcript)
+        session.send("\x03")
+        self.assertEqual(session.wait(), 130)
         self.assertEqual(list(self.tmp.iterdir()), [])
 
     @unittest.skipUnless(os.name == "posix", "requires a POSIX controlling terminal")

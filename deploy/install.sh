@@ -271,6 +271,20 @@ release_label() {
     fi
 }
 
+view_task_log() {
+    local logfile="$1" choice
+    printf '\n日志：%s\n\n' "${logfile:-无}"
+    if [ -n "$logfile" ] && [ -f "$logfile" ]; then
+        cat -- "$logfile" || printf '无法读取日志：文件无法打开。\n'
+    elif [ -z "$logfile" ]; then
+        printf '没有可用的日志。\n'
+    else
+        printf '无法读取日志：文件不存在。\n'
+    fi
+    printf '\n回车返回结果页：'
+    menu_read '' choice
+}
+
 wait_result_input() {
     local code="$1" retry="$2" logfile="$3" choice allow_retry=0 allow_edit=0
     RESULT_RETRY=0
@@ -291,16 +305,7 @@ wait_result_input() {
         case "$choice" in
             ''|0) return 0 ;;
             L|l)
-                printf '\n日志：%s\n\n' "${logfile:-无}"
-                if [ -n "$logfile" ] && [ -f "$logfile" ]; then
-                    cat -- "$logfile" || printf '无法读取日志：文件无法打开。\n'
-                elif [ -z "$logfile" ]; then
-                    printf '没有可用的日志。\n'
-                else
-                    printf '无法读取日志：文件不存在。\n'
-                fi
-                printf '\n回车返回结果页：'
-                menu_read '' choice || return 0
+                view_task_log "$logfile" || return 0
                 ;;
             R|r)
                 if [ "$allow_retry" = "1" ]; then
@@ -625,6 +630,49 @@ prepare_action() {
     esac
 }
 
+status_menu() {
+    local choice logfile
+    while [ "$MENU_EOF" = "0" ]; do
+        ACTION="status"
+        run_task
+        if [ "$LAST_TASK_CODE" -ne 0 ]; then
+            show_result "$LAST_TASK_CODE"
+            rm -rf -- "$TASK_RESULT_DIR" || log "结果临时目录清理失败: $TASK_RESULT_DIR"
+            [ "$RESULT_RETRY" = "1" ] || return 0
+            continue
+        fi
+        logfile=$(cat "$TASK_RESULT_DIR/log" 2>/dev/null || true)
+        rm -rf -- "$TASK_RESULT_DIR" || log "结果临时目录清理失败: $TASK_RESULT_DIR"
+        while [ "$MENU_EOF" = "0" ]; do
+            printf '\n  1) 启动 Incus\n'
+            printf '  2) 停止 Incus\n'
+            printf '  3) 启动 Agent\n'
+            printf '  4) 停止 Agent\n'
+            printf '  R) 刷新状态\n'
+            printf '  0) 返回主菜单\n\n'
+            printf '启动 Agent 会按服务依赖启动 Incus。停止 Incus 期间实例管理不可用。\n'
+            menu_read '请选择操作，回车返回菜单，L 查看日志：' choice || return 0
+            case "$choice" in
+                ''|0) return 0 ;;
+                R|r) break ;;
+                L|l) view_task_log "$logfile" || return 0 ;;
+                1) ACTION="start-incus"; break ;;
+                2) ACTION="stop-incus"; break ;;
+                3) ACTION="start-agent"; break ;;
+                4) ACTION="stop-agent"; break ;;
+                *) printf '请输入 1 到 4、R、L，或回车/0 返回。\n' ;;
+            esac
+        done
+        [ "$ACTION" != "status" ] || continue
+        while [ "$MENU_EOF" = "0" ]; do
+            run_task
+            show_result "$LAST_TASK_CODE"
+            rm -rf -- "$TASK_RESULT_DIR" || log "结果临时目录清理失败: $TASK_RESULT_DIR"
+            [ "$RESULT_RETRY" = "1" ] || break
+        done
+    done
+}
+
 menu_loop() {
     local choice code
     MENU_SESSION_DIR=$(mktemp -d)
@@ -641,7 +689,7 @@ menu_loop() {
         fi
         case "$choice" in
             1) ACTION="install" ;;
-            2) ACTION="status" ;;
+            2) status_menu; continue ;;
             3) ACTION="rollback" ;;
             4) ACTION="uninstall" ;;
             5) ACTION="uninstall"; KEEP_INSTANCES=1 ;;
@@ -836,19 +884,24 @@ PY
 }
 
 systemd_label() {
-    local svc="$1" st
-    if ! command -v systemctl >/dev/null 2>&1; then
+    local svc="$1" st load_state
+    if ! command -v systemctl >/dev/null 2>&1 || ! load_state=$(systemctl show --property=LoadState --value "$svc" 2>/dev/null); then
         printf '查询失败'
         return
     fi
-    if systemctl is-active --quiet "$svc" 2>/dev/null; then
-        printf '运行中'
-        return
-    fi
+    case "$load_state" in
+        not-found) printf '未安装'; return ;;
+        loaded|masked) ;;
+        *) printf '查询失败'; return ;;
+    esac
     st=$(systemctl is-active "$svc" 2>/dev/null || true)
     case "$st" in
+        active) printf '运行中' ;;
+        inactive) printf '已停止' ;;
         failed) printf '异常' ;;
-        *) printf '已停止' ;;
+        activating) printf '启动中' ;;
+        deactivating) printf '停止中' ;;
+        *) printf '查询失败' ;;
     esac
 }
 
@@ -861,18 +914,60 @@ agent_state_label() {
 }
 
 incus_state_label() {
-    if ! command -v incus >/dev/null 2>&1 && ! command -v systemctl >/dev/null 2>&1; then
-        printf '未安装'
-        return
+    systemd_label incus.service
+}
+
+control_service() {
+    local label="$1" service="$2" operation="$3" verb result expected load_state unit state
+    local -a units=("$service")
+    if [ "$operation" = "start" ]; then
+        verb="启动"; result="已启动"; expected="active"
+    else
+        verb="停止"; result="已停止"; expected="inactive"
     fi
-    systemd_label incus
+    progress "检查 ${label} 服务…"
+    acquire_lock
+    command -v systemctl >/dev/null 2>&1 || die "无法控制 ${label}：未找到 systemctl。"
+    load_state=$(systemctl show --property=LoadState --value "$service") || die "无法查询 ${label} 服务。"
+    case "$load_state" in
+        loaded|masked) ;;
+        not-found) die "${label} 未安装，请先安装后再操作。" ;;
+        *) die "${label} 服务不可用（${load_state:-状态未知}）。" ;;
+    esac
+    if [ "$service" = "incus.service" ]; then
+        load_state=$(systemctl show --property=LoadState --value incus.socket) || die "无法查询 Incus socket。"
+        case "$load_state" in
+            loaded|masked) units+=(incus.socket) ;;
+            not-found) ;;
+            *) die "Incus socket 不可用（${load_state:-状态未知}）。" ;;
+        esac
+    fi
+    progress "${verb} ${label}…"
+    # Include the socket in the same transaction so requests cannot reactivate a stopped Incus.
+    run_protected systemctl "$operation" "${units[@]}" || die "${verb} ${label} 失败：服务操作未完成。"
+    task_state "已执行 ${label} ${verb}请求" 1
+    if [ "$operation" = "start" ]; then
+        run_protected sleep 1
+    fi
+    progress "检查 ${label} 状态…"
+    for unit in "${units[@]}"; do
+        state=$(run_protected systemctl is-active "$unit" 2>/dev/null || true)
+        if [ "$state" != "$expected" ]; then
+            TASK_UNCONFIRMED="${label} 的${verb}结果"
+            die "${label} 状态未确认：${unit} 当前为 ${state:-查询失败}。"
+        fi
+    done
+    RESULT_KIND="success"
+    printf '\n%s %s。\n' "$label" "$result"
+    # A service job already submitted to systemd must finish before returning to the menu.
+    [ "$SOFT_INTERRUPT" != "1" ] || exit 130
 }
 
 show_status() {
     local agent_state="inactive" incus_state="n/a" backup="none" listen="n/a" sha="n/a"
     if command -v systemctl >/dev/null 2>&1; then
         agent_state=$(systemctl is-active "$AGENT_SERVICE" 2>/dev/null || true)
-        incus_state=$(systemctl is-active incus 2>/dev/null || systemctl is-active incus.service 2>/dev/null || true)
+        incus_state=$(systemctl is-active incus.service 2>/dev/null || true)
     fi
     [ -f "$AGENT_CONFIG_FILE" ] && listen=$(listen_addr)
     [ -f "$AGENT_BINARY" ] && command -v sha256sum >/dev/null 2>&1 && sha=$(sha256sum "$AGENT_BINARY" | awk '{print $1}')
@@ -1236,6 +1331,13 @@ install_packages() {
 
 on_interrupt() {
     case "$INTERRUPT_POLICY" in
+        service)
+            SOFT_INTERRUPT=1
+            if [ "$INTERRUPT_NOTICE" != 1 ]; then
+                INTERRUPT_NOTICE=1
+                printf '\n正在变更服务状态，完成并核对后返回状态菜单。\n'
+            fi
+            ;;
         ignore)
             if [ "$INTERRUPT_NOTICE" != 1 ]; then
                 INTERRUPT_NOTICE=1
@@ -1909,6 +2011,7 @@ execute_action() {
             ;;
         purge-incus) INTERRUPT_POLICY="ignore"; PURGE_INCUS_RUNNING=1 ;;
         status) INTERRUPT_POLICY="query" ;;
+        start-incus|stop-incus|start-agent|stop-agent) INTERRUPT_POLICY="service" ;;
         *) INTERRUPT_POLICY="soft" ;;
     esac
     trap 'finish_task "$?"' EXIT
@@ -1930,6 +2033,10 @@ execute_action() {
             show_status
             RESULT_KIND="success"
             ;;
+        start-incus) control_service Incus incus.service start ;;
+        stop-incus) control_service Incus incus.service stop ;;
+        start-agent) control_service Agent "$AGENT_SERVICE" start ;;
+        stop-agent) control_service Agent "$AGENT_SERVICE" stop ;;
         rollback) do_rollback ;;
         uninstall) do_uninstall ;;
         purge-incus) purge_incus ;;
